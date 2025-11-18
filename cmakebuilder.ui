@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>737</width>
-    <height>414</height>
+    <width>671</width>
+    <height>324</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -155,6 +155,27 @@
    </item>
    <item>
     <widget class="QPlainTextEdit" name="pedOutput"/>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_7">
+     <item>
+      <widget class="QLabel" name="label_8">
+       <property name="text">
+        <string>指定VC的bat环境：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="edVcEnv"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClearEnv">
+       <property name="text">
+        <string>清空</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_6">

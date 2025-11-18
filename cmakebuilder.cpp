@@ -16,12 +16,29 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     InitData();
     LoadConfig();
     BaseInit();
-    setWindowTitle("cmakeBuilder v1.0");
+    setWindowTitle("cmakeBuilder v1.0.1");
+    setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
+
+    auto s = getSize();
+    if (s.first != 0 && s.second != 0) {
+        resize(s.first, s.second);
+    }
 }
 
 CmakeBuilder::~CmakeBuilder()
 {
     delete ui;
+}
+
+void CmakeBuilder::closeEvent(QCloseEvent* event)
+{
+    QSize currentSize = this->size();
+    int width = currentSize.width();
+    int height = currentSize.height();
+    if (width > 0 && height > 0) {
+        setSize(width, height);
+    }
+    QWidget::closeEvent(event);
 }
 
 void CmakeBuilder::InitData()
@@ -37,10 +54,12 @@ void CmakeBuilder::InitData()
     }
     configFile_ = configDir + "/config.json";
     configUse_ = configDir + "/curuse.json";
+    configSize_ = configDir + "/size.json";
 
     ui->cbProject->setEditable(true);
     ui->cbProject->setMinimumWidth(150);
     ui->edCMake->setFocusPolicy(Qt::ClickFocus);
+    ui->pedOutput->setReadOnly(true);
 
     connect(process_, &QProcess::readyReadStandardOutput, this, &CmakeBuilder::onProcessReadyRead);
     connect(process_, &QProcess::readyReadStandardError, this, &CmakeBuilder::onProcessReadyRead);
@@ -63,6 +82,7 @@ void CmakeBuilder::InitData()
             }
         }
     });
+    connect(ui->btnClearEnv, &QPushButton::clicked, this, [this]() { ui->edVcEnv->clear(); });
 }
 
 void CmakeBuilder::LoadConfig()
@@ -273,6 +293,7 @@ OneConfig CmakeBuilder::ReadUi()
     o.cmakePath = ui->edCMake->text().trimmed().replace('\\', '/');
     o.sourceDir = ui->edSource->text().trimmed().replace('\\', '/');
     o.buildDir = ui->edBuildDir->text().trimmed().replace('\\', '/');
+    o.vcEnv = ui->edVcEnv->text().trimmed().replace('\\', '/');
     o.curUseArg = ui->cbAdditionArg->currentText();
     o.additonArgs.clear();
     for (int i = 0; i < ui->cbAdditionArg->count(); ++i) {
@@ -287,6 +308,7 @@ void CmakeBuilder::SetUi(const OneConfig& o)
     ui->edCMake->setText(o.cmakePath);
     ui->edSource->setText(o.sourceDir);
     ui->edBuildDir->setText(o.buildDir);
+    ui->edVcEnv->setText(o.vcEnv);
 
     // 清空下拉框并添加所有选项
     ui->cbAdditionArg->clear();
@@ -407,6 +429,93 @@ void CmakeBuilder::delArg()
     }
 }
 
+void CmakeBuilder::setSize(int w, int h)
+{
+    if (w <= 0 || h <= 0) {
+        Print("错误：窗口尺寸必须大于0");
+        return;
+    }
+
+    if (configSize_.isEmpty()) {
+        Print("错误：配置文件路径未设置");
+        return;
+    }
+
+    try {
+        json j;
+
+        // 如果配置文件已存在，读取现有内容
+        if (QFile::exists(configSize_)) {
+            if (!loadJsonFromFile(j, configSize_)) {
+                Print("警告：无法读取现有配置文件，将创建新文件");
+            }
+        }
+
+        // 设置窗口尺寸
+        j["window_size"] = {{"width", w},
+                            {"height", h},
+                            {"last_modified", QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss").toStdString()}};
+
+        // 保存到文件
+        if (saveJsonToFile(j, configSize_)) {
+            // Print(QString("窗口尺寸已保存: %1 x %2").arg(w).arg(h));
+        } else {
+            Print("错误：保存窗口尺寸失败");
+        }
+
+    } catch (const std::exception& e) {
+        Print(QString("错误：设置窗口尺寸时发生异常: %1").arg(e.what()));
+    }
+}
+
+std::pair<int, int> CmakeBuilder::getSize()
+{
+    if (configSize_.isEmpty()) {
+        Print("错误：配置文件路径未设置");
+        return {0, 0};
+    }
+
+    if (!QFile::exists(configSize_)) {
+        Print("配置文件不存在，返回默认尺寸");
+        return {0, 0};
+    }
+
+    try {
+        json j;
+        if (!loadJsonFromFile(j, configSize_)) {
+            Print("错误：无法读取配置文件");
+            return {0, 0};
+        }
+
+        // 检查是否存在窗口尺寸配置
+        if (!j.contains("window_size")) {
+            Print("配置文件中未找到窗口尺寸设置");
+            return {0, 0};
+        }
+
+        json windowSize = j["window_size"];
+
+        // 验证字段存在性
+        if (!windowSize.contains("width") || !windowSize.contains("height")) {
+            Print("错误：窗口尺寸配置不完整");
+            return {0, 0};
+        }
+
+        int width = windowSize.value("width", 0);
+        int height = windowSize.value("height", 0);
+
+        if (width <= 0 || height <= 0) {
+            Print("警告：配置中的窗口尺寸无效");
+            return {0, 0};
+        }
+        return {width, height};
+
+    } catch (const std::exception& e) {
+        Print(QString("错误：读取窗口尺寸时发生异常: %1").arg(e.what()));
+        return {0, 0};
+    }
+}
+
 // 私有辅助函数
 bool CmakeBuilder::loadJsonFromFile(json& j, const QString& filename)
 {
@@ -457,6 +566,7 @@ OneConfig CmakeBuilder::jsonToConfig(const json& j)
     config.curTarget = QString::fromStdString(j.value("curTarget", ""));
     config.curType = QString::fromStdString(j.value("curType", ""));
     config.curUseArg = QString::fromStdString(j.value("curUseArg", ""));
+    config.vcEnv = QString::fromStdString(j.value("vcEnv", ""));
 
     // 处理一维数组 additonArgs
     if (j.contains("additonArgs")) {
@@ -481,6 +591,7 @@ json CmakeBuilder::configToJson(const OneConfig& config)
     j["curTarget"] = config.curTarget.toStdString();
     j["curType"] = config.curType.toStdString();
     j["curUseArg"] = config.curUseArg.toStdString();
+    j["vcEnv"] = config.vcEnv.toStdString();
 
     // 处理一维数组 additonArgs
     json argsArray = json::array();
@@ -505,7 +616,7 @@ void CmakeBuilder::BaseInit()
     ui->cbMode->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     ui->cbType->setSizeAdjustPolicy(QComboBox::AdjustToContents);
 
-    connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::cmakeConfigTest);
+    connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::cmakeConfigWithVCEnv);
     connect(ui->btnBuild, &QPushButton::clicked, this, &CmakeBuilder::cmakeBuild);
     connect(ui->btnAddCmake, &QPushButton::clicked, this, [this]() {
         QString fileName = QFileDialog::getOpenFileName(this, "选择 CMake 可执行文件", QDir::homePath(),
@@ -653,14 +764,21 @@ void CmakeBuilder::cmakeConfig()
     });
 }
 
-void CmakeBuilder::cmakeConfigTest()
+void CmakeBuilder::cmakeConfigWithVCEnv()
 {
-    QString envBat = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017/Professional\\VC\\Auxiliary\\Build\\vcvars64.bat";
+    QString envBat = ui->edVcEnv->text().trimmed();
+    if (envBat.isEmpty()) {
+        cmakeConfig();
+        return;
+    }
 
     if (!QFile::exists(envBat)) {
         QMessageBox::critical(this, "错误", "VC环境脚本不存在:\n" + envBat);
         return;
     }
+
+    configRet_ = false;
+    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
     // 获取配置参数
     auto buildDir = ui->edBuildDir->text().trimmed();
@@ -721,22 +839,39 @@ void CmakeBuilder::cmakeConfigTest()
     Print(SL);
 
     DisableBtn();
-
-    // 4. 设置进程环境（关键步骤）
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.insert(vsEnv);   // 添加VC环境变量
+    env.insert(vsEnv);
     process_->setProcessEnvironment(env);
-
-    // 5. 启动CMake进程
     process_->start(cmake, arguments);
 
     if (!process_->waitForStarted(20000)) {
         Print("错误：启动配置进程超时", true);
-        EnableBtn();
         return;
     }
-
-    Print("配置进程已启动...");
+    QTimer::singleShot(1000, [=]() {
+        QString buildNinjaPath = buildDir + "/build.ninja";
+        if (QFile::exists(buildNinjaPath)) {
+            auto ret = getTarget();
+            ui->cbTarget->clear();
+            ui->cbTarget->addItem("all");
+            for (const auto& item : ret) {
+                ui->cbTarget->addItem(item);
+            }
+            if (!curTarget_.isEmpty()) {
+                auto index = ui->cbTarget->findText(curTarget_);
+                if (index >= 0) {
+                    ui->cbTarget->setCurrentIndex(index);
+                } else {
+                    ui->cbTarget->setCurrentIndex(0);
+                }
+            }
+            curTarget_ = ui->cbTarget->currentText();
+            curType_ = ui->cbMode->currentText();
+            configRet_ = true;
+        } else {
+            Print("错误：未找到 build.ninja 文件", true);
+        }
+    });
 }
 
 QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
@@ -746,19 +881,19 @@ QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
     process.setArguments({"/c", "call", vcvarsPath, "&&", "set"});
     Print("获取VC环境变量: " + vcvarsPath);
     process.start();
-    
+
     if (!process.waitForFinished(15000)) {
         Print("错误：进程执行超时");
         return QProcessEnvironment();
     }
-    
+
     if (process.exitCode() != 0) {
         Print("错误：VC环境脚本执行失败");
         return QProcessEnvironment();
     }
-    
+
     QString allOutput = QString::fromLocal8Bit(process.readAllStandardOutput());
-    
+
     if (allOutput.isEmpty()) {
         Print("错误：没有获取到输出");
         return QProcessEnvironment();
@@ -771,11 +906,12 @@ QProcessEnvironment CmakeBuilder::parseEnvironmentOutput(const QString& output)
 {
     QProcessEnvironment env;
     QStringList lines = output.split('\n');
-    
+
     for (const QString& line : lines) {
         QString trimmedLine = line.trimmed();
-        if (trimmedLine.isEmpty()) continue;
-        
+        if (trimmedLine.isEmpty())
+            continue;
+
         int equalsIndex = trimmedLine.indexOf('=');
         if (equalsIndex > 0) {
             QString varName = trimmedLine.left(equalsIndex).trimmed();
@@ -783,7 +919,7 @@ QProcessEnvironment CmakeBuilder::parseEnvironmentOutput(const QString& output)
             env.insert(varName, varValue);
         }
     }
-    
+
     return env;
 }
 

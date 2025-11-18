@@ -23,6 +23,7 @@ struct OneConfig {
     QString curTarget;
     QString curType;
     QString curUseArg;
+    QString vcEnv;
     QVector<QString> additonArgs;
 };
 
@@ -33,6 +34,9 @@ class CmakeBuilder : public QDialog
 public:
     CmakeBuilder(QWidget* parent = nullptr);
     ~CmakeBuilder();
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     void InitData();
@@ -49,14 +53,16 @@ private:
     bool GetAllKeys(QVector<QString>& keys);
     void newArg();
     void delArg();
+    void setSize(int w, int h);
+    std::pair<int, int> getSize();
 
 public:
     void BaseInit();
     void cmakeConfig();
-    void cmakeConfigTest();
+    void cmakeConfigWithVCEnv();
     void cmakeBuild();
     void cmakeReBuild();
-    // %comspec% /k "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvars64.bat"
+
     QProcessEnvironment getVCEnvironment(const QString& vcvarsPath);
     QProcessEnvironment parseEnvironmentOutput(const QString& output);
 
@@ -81,6 +87,7 @@ private:
 private:
     QString configFile_;
     QString configUse_;
+    QString configSize_;
     QString curType_;
     QString curTarget_;
     bool configRet_;
