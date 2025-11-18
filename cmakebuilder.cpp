@@ -1,18 +1,22 @@
 #include "cmakebuilder.h"
 
 #include <QDir>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QTimer>
 
 #include "./ui_cmakebuilder.h"
+
+constexpr auto SL = "----------------------------------------------";
 
 CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeBuilder)
 {
     ui->setupUi(this);
-    m_process = new QProcess(this);
-    connect(m_process, &QProcess::readyReadStandardOutput, this, &CmakeBuilder::onProcessReadyRead);
-    connect(m_process, &QProcess::readyReadStandardError, this, &CmakeBuilder::onProcessReadyRead);
-    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &CmakeBuilder::onProcessFinished);
-    connect(m_process, &QProcess::errorOccurred, this, &CmakeBuilder::onProcessError);
-    TestInit();
+    InitData();
+    LoadConfig();
+    BaseInit();
+    setWindowTitle("cmakeBuilder v1.0")
 }
 
 CmakeBuilder::~CmakeBuilder()
@@ -20,14 +24,476 @@ CmakeBuilder::~CmakeBuilder()
     delete ui;
 }
 
-void CmakeBuilder::TestInit()
+void CmakeBuilder::InitData()
 {
-    ui->cbCMake->addItem("C:/Program Files/CMake/bin/cmake.exe");
-    ui->cbCMake->setCurrentIndex(0);
-    ui->cbSource->addItem("D:/Demo/untitled");
-    ui->cbSource->setCurrentIndex(0);
-    ui->edBuildDir->setText("D:/Demo/untitled/build");
+    process_ = new QProcess(this);
+    auto configDir = QDir::homePath() + "/.config/cmakeBuilder";
+    QDir dir(configDir);
+    if (!dir.exists()) {
+        if (!dir.mkpath(".")) {
+            QMessageBox::information(this, "提示", "创建配置文件目录失败。");
+            return;
+        }
+    }
+    configFile_ = configDir + "/config.json";
+    configUse_ = configDir + "/curuse.json";
 
+    ui->cbProject->setEditable(true);
+    ui->cbProject->setMinimumWidth(150);
+    ui->edCMake->setFocusPolicy(Qt::ClickFocus);
+
+    connect(process_, &QProcess::readyReadStandardOutput, this, &CmakeBuilder::onProcessReadyRead);
+    connect(process_, &QProcess::readyReadStandardError, this, &CmakeBuilder::onProcessReadyRead);
+    connect(process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &CmakeBuilder::onProcessFinished);
+    connect(process_, &QProcess::errorOccurred, this, &CmakeBuilder::onProcessError);
+    connect(ui->btnSaveConfig, &QPushButton::clicked, this, &CmakeBuilder::SaveCur);
+    connect(ui->btnLoadConfig, &QPushButton::clicked, this, &CmakeBuilder::SimpleLoad);
+    connect(ui->btnAddArg, &QPushButton::clicked, this, &CmakeBuilder::newArg);
+    connect(ui->btnDelArg, &QPushButton::clicked, this, &CmakeBuilder::delArg);
+    connect(ui->btnReBuild, &QPushButton::clicked, this, &CmakeBuilder::cmakeReBuild);
+    connect(ui->btnDelConfig, &QPushButton::clicked, this, [this]() {
+        auto key = ui->cbProject->currentText();
+        if (DelData(key)) {
+            int index = ui->cbProject->findText(key);
+            if (index >= 0) {
+                ui->cbProject->removeItem(index);
+            }
+            if (ui->cbProject->count() > 0) {
+                ui->cbProject->setCurrentIndex(0);
+            }
+        }
+    });
+}
+
+void CmakeBuilder::LoadConfig()
+{
+    QVector<QString> keys;
+    if (!GetAllKeys(keys)) {
+        return;
+    }
+    QString curuse;
+    if (!GetCurUse(curuse)) {
+        return;
+    }
+    if (!keys.contains(curuse)) {
+        return;
+    }
+    OneConfig o;
+    if (!GetData(curuse, o)) {
+        return;
+    }
+    SetUi(o);
+    ui->cbProject->clear();
+    for (const auto& item : keys) {
+        ui->cbProject->addItem(item);
+    }
+    ui->cbProject->setCurrentText(curuse);
+}
+
+bool CmakeBuilder::SimpleLoad()
+{
+    QString key = ui->cbProject->currentText();
+    OneConfig o;
+    if (!GetData(key, o)) {
+        return false;
+    }
+    SetUi(o);
+    return true;
+}
+
+bool CmakeBuilder::SaveData(const OneConfig& config)
+{
+    if (config.key.isEmpty()) {
+        QMessageBox::warning(nullptr, "警告", "配置键为空，无法保存");
+        return false;
+    }
+
+    try {
+        json j;
+
+        // 读取现有配置文件
+        loadJsonFromFile(j, configFile_);
+
+        // 更新或添加配置
+        j[config.key.toStdString()] = configToJson(config);
+
+        // 保存到文件
+        if (saveJsonToFile(j, configFile_)) {
+            QMessageBox::information(nullptr, "成功", QString("配置保存成功！\n键值：%1").arg(config.key));
+            return true;
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "错误", QString("保存配置时发生错误：\n%1").arg(e.what()));
+    }
+
+    return false;
+}
+
+bool CmakeBuilder::GetData(const QString& key, OneConfig& config)
+{
+    if (key.isEmpty()) {
+        QMessageBox::warning(nullptr, "警告", "配置键为空");
+        return false;
+    }
+
+    try {
+        json j;
+        if (!loadJsonFromFile(j, configFile_)) {
+            QMessageBox::information(nullptr, "提示", "配置文件不存在或读取失败");
+            return false;
+        }
+
+        if (!j.contains(key.toStdString())) {
+            QMessageBox::information(nullptr, "提示", QString("未找到键值为 '%1' 的配置").arg(key));
+            return false;
+        }
+
+        config = jsonToConfig(j[key.toStdString()]);
+        return true;
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "错误", QString("加载配置时发生错误：\n%1").arg(e.what()));
+        return false;
+    }
+}
+
+bool CmakeBuilder::DelData(const QString& key)
+{
+    if (key.isEmpty()) {
+        QMessageBox::warning(nullptr, "警告", "配置键为空，无法删除");
+        return false;
+    }
+
+    if (!QFile::exists(configFile_)) {
+        QMessageBox::information(nullptr, "提示", "配置文件不存在");
+        return false;
+    }
+
+    try {
+
+        json j;
+
+        if (!loadJsonFromFile(j, configFile_)) {
+            QMessageBox::critical(nullptr, "错误", "无法读取配置文件");
+            return false;
+        }
+
+        if (!j.contains(key.toStdString())) {
+            QMessageBox::information(nullptr, "提示", QString("未找到键值为 '%1' 的配置").arg(key));
+            return false;
+        }
+
+        QMessageBox::StandardButton reply;
+        reply = QMessageBox::question(nullptr, "确认删除", QString("确定要删除配置 '%1' 吗？").arg(key),
+                                      QMessageBox::Yes | QMessageBox::No);
+
+        if (reply != QMessageBox::Yes) {
+            return false;
+        }
+
+        QString currentKey;
+        if (GetCurUse(currentKey) && currentKey == key) {
+            QMessageBox::information(nullptr, "提示", "不能删除当前正在使用的配置，请先切换其他配置");
+            return false;
+        }
+
+        j.erase(key.toStdString());
+
+        if (saveJsonToFile(j, configFile_)) {
+            QMessageBox::information(nullptr, "成功", QString("配置 '%1' 删除成功").arg(key));
+            return true;
+        } else {
+            QMessageBox::critical(nullptr, "错误", "保存配置文件失败");
+            return false;
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "错误", QString("删除配置时发生错误：\n%1").arg(e.what()));
+        return false;
+    }
+}
+
+bool CmakeBuilder::SetCurUse(const QString& key)
+{
+    if (key.isEmpty()) {
+        QMessageBox::warning(nullptr, "警告", "配置键为空");
+        return false;
+    }
+
+    try {
+        // 验证配置是否存在
+        OneConfig config;
+        if (!GetData(key, config)) {
+            return false;
+        }
+
+        json j;
+        j["current_config"] = key.toStdString();
+        j["last_modified"] = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss").toStdString();
+
+        if (saveJsonToFile(j, configUse_)) {
+            return true;
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "错误", QString("设置当前配置时发生错误：\n%1").arg(e.what()));
+    }
+
+    return false;
+}
+
+bool CmakeBuilder::GetCurUse(QString& key)
+{
+    try {
+        json j;
+        if (!loadJsonFromFile(j, configUse_)) {
+            key.clear();
+            return false;
+        }
+
+        if (!j.contains("current_config")) {
+            key.clear();
+            return false;
+        }
+
+        key = QString::fromStdString(j["current_config"]);
+        return true;
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "错误", QString("获取当前配置时发生错误：\n%1").arg(e.what()));
+        key.clear();
+        return false;
+    }
+}
+
+OneConfig CmakeBuilder::ReadUi()
+{
+    OneConfig o;
+    o.cmakePath = ui->edCMake->text().trimmed().replace('\\', '/');
+    o.sourceDir = ui->edSource->text().trimmed().replace('\\', '/');
+    o.buildDir = ui->edBuildDir->text().trimmed().replace('\\', '/');
+    o.curUseArg = ui->cbAdditionArg->currentText();
+    o.additonArgs.clear();
+    for (int i = 0; i < ui->cbAdditionArg->count(); ++i) {
+        o.additonArgs.append(ui->cbAdditionArg->itemText(i));
+    }
+    return o;
+}
+
+void CmakeBuilder::SetUi(const OneConfig& o)
+{
+    // 设置基本路径
+    ui->edCMake->setText(o.cmakePath);
+    ui->edSource->setText(o.sourceDir);
+    ui->edBuildDir->setText(o.buildDir);
+
+    // 清空下拉框并添加所有选项
+    ui->cbAdditionArg->clear();
+    for (const QString& arg : o.additonArgs) {
+        ui->cbAdditionArg->addItem(arg);
+    }
+
+    // 设置当前选中的参数
+    int index = ui->cbAdditionArg->findText(o.curUseArg);
+    if (index >= 0) {
+        ui->cbAdditionArg->setCurrentIndex(index);
+    } else if (ui->cbAdditionArg->count() > 0) {
+        // 如果找不到匹配项，选择第一项
+        ui->cbAdditionArg->setCurrentIndex(0);
+    }
+}
+
+void CmakeBuilder::SaveCur(bool isNotice)
+{
+    QString key = ui->cbProject->currentText().trimmed();
+    if (key.isEmpty()) {
+        QMessageBox::information(this, "提示", "输入配置名称");
+        return;
+    }
+    auto o = ReadUi();
+    o.key = key;
+    if (!SaveData(o)) {
+        QMessageBox::information(this, "提示", "保存失败");
+        return;
+    }
+    SetCurUse(o.key);
+}
+
+bool CmakeBuilder::GetAllKeys(QVector<QString>& keys)
+{
+    keys.clear();
+
+    if (!QFile::exists(configFile_)) {
+        return false;
+    }
+
+    try {
+        json j;
+        if (!loadJsonFromFile(j, configFile_)) {
+            QMessageBox::critical(nullptr, "错误", "无法读取配置文件");
+            return false;
+        }
+
+        // 遍历JSON对象的所有键
+        for (auto it = j.begin(); it != j.end(); ++it) {
+            keys.append(QString::fromStdString(it.key()));
+        }
+
+        if (keys.isEmpty()) {
+            QMessageBox::information(nullptr, "提示", "配置文件中没有找到任何配置");
+            return false;
+        }
+
+        return true;
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "错误", QString("读取配置键值时发生错误：\n%1").arg(e.what()));
+        return false;
+    }
+}
+
+void CmakeBuilder::newArg()
+{
+    QInputDialog dialog(this);
+    dialog.setWindowTitle("输入");
+    dialog.setLabelText("要新建参数项:");
+    dialog.setOkButtonText("确定");
+    dialog.setCancelButtonText("取消");
+    auto size = dialog.minimumSizeHint();
+    size.setWidth(size.width() + 200);
+    dialog.setFixedSize(size);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        QString newArg = dialog.textValue().trimmed();
+        if (!newArg.isEmpty()) {
+            int index = ui->cbAdditionArg->findText(newArg);
+            if (index == -1) {
+                ui->cbAdditionArg->addItem(newArg);
+                ui->cbAdditionArg->setCurrentText(newArg);
+            } else {
+                ui->cbAdditionArg->setCurrentIndex(index);
+            }
+        } else {
+            QMessageBox::warning(this, "警告", "输入内容不能为空");
+        }
+    }
+}
+
+void CmakeBuilder::delArg()
+{
+    QString currentText = ui->cbAdditionArg->currentText();
+    if (currentText.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请先选择要删除的参数项");
+        return;
+    }
+
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, "确认删除", QString("确定要删除参数项 '%1' 吗？").arg(currentText),
+                                  QMessageBox::Yes | QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        int currentIndex = ui->cbAdditionArg->currentIndex();
+        ui->cbAdditionArg->removeItem(currentIndex);
+        if (ui->cbAdditionArg->count() > 0) {
+            if (currentIndex >= ui->cbAdditionArg->count()) {
+                ui->cbAdditionArg->setCurrentIndex(ui->cbAdditionArg->count() - 1);
+            } else {
+                ui->cbAdditionArg->setCurrentIndex(currentIndex);
+            }
+        }
+
+        QMessageBox::information(this, "成功", "参数项删除成功");
+    }
+}
+
+// 私有辅助函数
+bool CmakeBuilder::loadJsonFromFile(json& j, const QString& filename)
+{
+    if (!QFile::exists(filename)) {
+        j = json::object();   // 返回空JSON对象
+        return true;
+    }
+
+    std::ifstream inFile(filename.toStdString());
+    if (!inFile.is_open()) {
+        return false;
+    }
+
+    try {
+        inFile >> j;
+        inFile.close();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool CmakeBuilder::saveJsonToFile(const json& j, const QString& filename)
+{
+    std::ofstream outFile(filename.toStdString());
+    if (!outFile.is_open()) {
+        return false;
+    }
+
+    try {
+        outFile << j.dump(4);   // 美化输出，4空格缩进
+        outFile.close();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+OneConfig CmakeBuilder::jsonToConfig(const json& j)
+{
+    OneConfig config;
+
+    config.key = QString::fromStdString(j.value("key", ""));
+    config.cmakePath = QString::fromStdString(j.value("cmakePath", ""));
+    config.sourceDir = QString::fromStdString(j.value("sourceDir", ""));
+    config.buildDir = QString::fromStdString(j.value("buildDir", ""));
+    config.curMode = QString::fromStdString(j.value("curMode", ""));
+    config.curTarget = QString::fromStdString(j.value("curTarget", ""));
+    config.curType = QString::fromStdString(j.value("curType", ""));
+    config.curUseArg = QString::fromStdString(j.value("curUseArg", ""));
+
+    // 处理一维数组 additonArgs
+    if (j.contains("additonArgs")) {
+        json argsArray = j["additonArgs"];
+        for (const auto& arg : argsArray) {
+            config.additonArgs.append(QString::fromStdString(arg));
+        }
+    }
+
+    return config;
+}
+
+json CmakeBuilder::configToJson(const OneConfig& config)
+{
+    json j;
+
+    j["key"] = config.key.toStdString();
+    j["cmakePath"] = config.cmakePath.toStdString();
+    j["sourceDir"] = config.sourceDir.toStdString();
+    j["buildDir"] = config.buildDir.toStdString();
+    j["curMode"] = config.curMode.toStdString();
+    j["curTarget"] = config.curTarget.toStdString();
+    j["curType"] = config.curType.toStdString();
+    j["curUseArg"] = config.curUseArg.toStdString();
+
+    // 处理一维数组 additonArgs
+    json argsArray = json::array();
+    for (const QString& arg : config.additonArgs) {
+        argsArray.push_back(arg.toStdString());
+    }
+    j["additonArgs"] = argsArray;
+
+    return j;
+}
+
+void CmakeBuilder::BaseInit()
+{
     ui->cbType->addItem("Ninja");
     ui->cbType->setCurrentText(0);
 
@@ -39,148 +505,260 @@ void CmakeBuilder::TestInit()
     ui->cbMode->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     ui->cbType->setSizeAdjustPolicy(QComboBox::AdjustToContents);
 
-    connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::TestConfig);
-    connect(ui->btnBuild, &QPushButton::clicked, this, &CmakeBuilder::TestBuild);
+    connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::cmakeConfig);
+    connect(ui->btnBuild, &QPushButton::clicked, this, &CmakeBuilder::cmakeBuild);
+    connect(ui->btnAddCmake, &QPushButton::clicked, this, [this]() {
+        QString fileName = QFileDialog::getOpenFileName(this, "选择 CMake 可执行文件", QDir::homePath(),
+                                                        "CMake 文件 (cmake cmake.exe);;所有文件 (*.*)");
+
+        if (!fileName.isEmpty()) {
+            QFileInfo fileInfo(fileName);
+            QString baseName = fileInfo.fileName().toLower();
+
+            if (baseName == "cmake" || baseName == "cmake.exe") {
+                ui->edCMake->setText(QDir::toNativeSeparators(fileName));
+            } else {
+                QMessageBox::warning(this, "警告", "选择的文件不是有效的 CMake 可执行文件");
+            }
+        }
+    });
+
+    connect(ui->btnSelSource, &QPushButton::clicked, this, [this]() {
+        QString dirPath = QFileDialog::getExistingDirectory(this, "选择源码目录", QDir::homePath(),
+                                                            QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+
+        if (!dirPath.isEmpty()) {
+            // 检查目录是否包含CMakeLists.txt
+            QDir sourceDir(dirPath);
+            bool hasCMakeLists = sourceDir.exists("CMakeLists.txt");
+
+            if (hasCMakeLists) {
+                ui->edSource->setText(QDir::toNativeSeparators(dirPath));
+            } else {
+                QMessageBox::StandardButton reply =
+                    QMessageBox::question(this, "确认选择", "选择的目录中没有找到 CMakeLists.txt 文件，是否继续使用此目录？",
+                                          QMessageBox::Yes | QMessageBox::No);
+
+                if (reply == QMessageBox::Yes) {
+                    ui->edSource->setText(QDir::toNativeSeparators(dirPath));
+                }
+            }
+        }
+    });
+
+    connect(ui->btnSelBuildDir, &QPushButton::clicked, this, [this]() {
+        QString dirPath = QFileDialog::getExistingDirectory(this, "选择构建目录", QDir::homePath(),
+                                                            QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+
+        if (!dirPath.isEmpty()) {
+            QDir buildDir(dirPath);
+
+            if (!buildDir.exists()) {
+                ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
+            } else {
+                buildDir.setFilter(QDir::NoDotAndDotDot | QDir::AllEntries);
+                if (buildDir.count() == 0) {
+                    ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
+                } else {
+                    ui->edBuildDir->setText("");
+                }
+            }
+        }
+    });
 }
 
-void CmakeBuilder::TestConfig()
+void CmakeBuilder::cmakeConfig()
 {
-    auto sourceDir = ui->cbSource->currentText();
-    auto buildDir = ui->edBuildDir->text().trimmed();
-    auto cmake = ui->cbCMake->currentText();
-    QString type = ui->cbType->currentText();
-    auto mode = ui->cbMode->currentText();
+    configRet_ = false;
+    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
-    // 检查进程是否正在运行
-    if (m_process->state() == QProcess::Running) {
-        appendOutput("CMake 进程正在运行，请等待完成...", true);
+    auto buildDir = ui->edBuildDir->text().trimmed();
+    auto cmake = ui->edCMake->text().trimmed();
+    auto target = ui->cbTarget->currentText();
+    auto mode = ui->cbMode->currentText();
+    curTarget_ = ui->cbTarget->currentText();
+
+    if (process_->state() == QProcess::Running) {
+        Print("CMake 进程正在运行，请等待完成...", true);
         return;
     }
 
-    // 清空输出
-    ui->pedOutput->clear();
-
-    // 确保构建目录存在
-    QDir dir(buildDir);
-    if (!dir.exists()) {
-        if (!dir.mkpath(".")) {
-            appendOutput("错误：无法创建构建目录 " + buildDir, true);
-            return;
+    if (!curType_.isEmpty() && ui->cbMode->currentText() != curType_) {
+        Print("模式已变更，重新执行配置。");
+        QDir dir(buildDir);
+        if (dir.exists()) {
+            if (dir.removeRecursively()) {
+                Print("已清空旧模式的构建目录: " + buildDir);
+                QDir().mkpath(buildDir);
+            } else {
+                Print("错误: 无法清空构建目录: " + buildDir);
+            }
         }
     }
 
-    // 设置工作目录
-    m_process->setWorkingDirectory(buildDir);
-
-    // 准备 CMake 参数
+    ui->pedOutput->clear();
+    QDir dir(buildDir);
+    if (!dir.exists()) {
+        if (!dir.mkpath(".")) {
+            Print("错误：无法创建构建目录 " + buildDir, true);
+            return;
+        }
+    }
+    process_->setWorkingDirectory(buildDir);
     QStringList arguments;
-    arguments << "-S" << sourceDir;
+    arguments << "-S" << ui->edSource->text().trimmed();
     arguments << "-B" << buildDir;
-    arguments << "-G" << type;
+    arguments << "-G" << ui->cbType->currentText();
+    arguments << ui->cbAdditionArg->currentText();
 
     // 添加其他常用选项
     QString buildType = "-DCMAKE_BUILD_TYPE=" + mode;
     arguments << buildType;
 
-    appendOutput("开始执行 CMake 配置...");
-    appendOutput("命令: " + cmake + " " + arguments.join(" "));
-    appendOutput("工作目录: " + buildDir);
-    appendOutput("----------------------------------------");
+    Print("开始执行 CMake 配置...");
+    Print("命令: " + cmake + " " + arguments.join(" "));
+    Print("工作目录: " + buildDir);
+    Print(SL);
 
-    // 禁用按钮，防止重复点击
-    ui->btnConfig->setEnabled(false);
+    DisableBtn();
+    process_->start(cmake, arguments);
 
-    // 启动进程
-    m_process->start(cmake, arguments);
+    if (!process_->waitForStarted(20000)) {
+        Print("错误：启动 CMake 进程超时", true);
+        return;
+    }
+    QTimer::singleShot(1000, [=]() {
+        QString buildNinjaPath = buildDir + "/build.ninja";
+        if (QFile::exists(buildNinjaPath)) {
+            auto ret = getTarget();
+            ui->cbTarget->clear();
+            ui->cbTarget->addItem("all");
+            for (const auto& item : ret) {
+                ui->cbTarget->addItem(item);
+            }
+            if (!curTarget_.isEmpty()) {
+                auto index = ui->cbTarget->findText(curTarget_);
+                if (index >= 0) {
+                    ui->cbTarget->setCurrentIndex(index);
+                } else {
+                    ui->cbTarget->setCurrentIndex(0);
+                }
+            }
+            curTarget_ = ui->cbTarget->currentText();
+            curType_ = ui->cbMode->currentText();
+            configRet_ = true;
+        } else {
+            Print("错误：未找到 build.ninja 文件", true);
+        }
+    });
+}
 
-    if (!m_process->waitForStarted(5000)) {
-        appendOutput("错误：启动 CMake 进程超时", true);
-        ui->btnConfig->setEnabled(true);
+void CmakeBuilder::cmakeBuild()
+{
+    if (ui->cbTarget->currentText().isEmpty()) {
+        QMessageBox::information(this, "提示", "请先执行CMake配置");
         return;
     }
 
-    auto ret = getTarget();
-    ui->cbTarget->clear();
-    ui->cbTarget->addItem("all");
-    for (const auto& item : ret) {
-        ui->cbTarget->addItem(item);
-    }
-    ui->cbTarget->setCurrentIndex(0);
-}
+    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
-void CmakeBuilder::TestBuild()
-{
     auto buildDir = ui->edBuildDir->text().trimmed();
-    auto cmake = ui->cbCMake->currentText();
+    auto cmake = ui->edCMake->text().trimmed();
     auto target = ui->cbTarget->currentText();
     auto mode = ui->cbMode->currentText();
 
-    // 检查进程是否正在运行
-    if (m_process->state() == QProcess::Running) {
-        appendOutput("CMake 进程正在运行，请等待完成...", true);
+    if (process_->state() == QProcess::Running) {
+        Print("CMake 进程正在运行，请等待完成...", true);
         return;
     }
 
-    // 检查构建目录是否存在
     if (!QDir(buildDir).exists()) {
-        appendOutput("错误：构建目录不存在，请先执行配置", true);
+        Print("错误：构建目录不存在，请先执行配置", true);
         return;
     }
 
-    // 检查 CMakeCache.txt 是否存在（确保已配置）
     if (!QFile::exists(buildDir + "/CMakeCache.txt")) {
-        appendOutput("错误：项目未配置，请先执行 CMake 配置", true);
+        Print("错误：项目未配置，请先执行 CMake 配置", true);
         return;
     }
 
-    // 清空输出
     ui->pedOutput->clear();
+    process_->setWorkingDirectory(buildDir);
 
-    // 设置工作目录
-    m_process->setWorkingDirectory(buildDir);
-
-    // 准备 CMake 构建参数
     QStringList arguments;
     arguments << "--build" << buildDir;
-    
-    // 添加构建配置
     arguments << "--config" << mode;
 
     auto retTarget = QFileInfo(target).baseName();
     arguments << "--target" << retTarget;
-    
-    // 添加并行构建选项（可选）
     arguments << "--parallel";
-    
-    // 添加详细输出（可选）
-    // arguments << "--verbose";
 
-    appendOutput("开始执行 CMake 构建...");
-    appendOutput("命令: " + cmake + " " + arguments.join(" "));
-    appendOutput("目标: " + target);
-    appendOutput("配置: " + mode);
-    appendOutput("工作目录: " + buildDir);
-    appendOutput("----------------------------------------");
+    Print("开始执行 CMake 构建...");
+    Print("命令: " + cmake + " " + arguments.join(" "));
+    Print("目标: " + target);
+    Print("配置: " + mode);
+    Print("工作目录: " + buildDir);
+    Print(SL);
 
-    // 禁用按钮，防止重复点击
-    ui->btnConfig->setEnabled(false);
-    ui->btnBuild->setEnabled(false);
+    DisableBtn();
+    process_->start(cmake, arguments);
 
-    // 启动进程
-    m_process->start(cmake, arguments);
-
-    if (!m_process->waitForStarted(5000)) {
-        appendOutput("错误：启动 CMake 构建进程超时", true);
-        ui->btnConfig->setEnabled(true);
-        ui->btnBuild->setEnabled(true);
+    if (!process_->waitForStarted(5000)) {
+        Print("错误：启动 CMake 构建进程超时", true);
         return;
     }
+}
+
+void CmakeBuilder::cmakeReBuild()
+{
+    QMessageBox::StandardButton reply = QMessageBox::question(this, "确认重新构建",
+                                                              "确定要重新执行 CMake 配置吗？\n"
+                                                              "这将清空构建目录并重新生成构建文件。",
+                                                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+    if (reply != QMessageBox::Yes) {
+        Print("用户取消重新构建");
+        return;
+    }
+
+    Print("重新构建开始...");
+    auto buildDir = ui->edBuildDir->text().trimmed();
+    QDir dir(buildDir);
+    if (dir.exists()) {
+        if (dir.removeRecursively()) {
+            Print("已清空旧模式的构建目录: " + buildDir);
+            QDir().mkpath(buildDir);
+        } else {
+            Print("错误: 无法清空构建目录: " + buildDir);
+        }
+    }
+    cmakeConfig();
+    QTimer::singleShot(1500, [this]() {
+        if (!configRet_) {
+            return;
+        }
+        cmakeBuild();
+    });
+}
+
+void CmakeBuilder::DisableBtn()
+{
+    ui->btnBuild->setEnabled(false);
+    ui->btnReBuild->setEnabled(false);
+    ui->btnConfig->setEnabled(false);
+}
+
+void CmakeBuilder::EnableBtn()
+{
+    ui->btnBuild->setEnabled(true);
+    ui->btnReBuild->setEnabled(true);
+    ui->btnConfig->setEnabled(true);
 }
 
 void CmakeBuilder::onProcessReadyRead()
 {
     // 处理标准输出
-    QByteArray outputData = m_process->readAllStandardOutput();
+    QByteArray outputData = process_->readAllStandardOutput();
     if (!outputData.isEmpty()) {
         static QString stdoutBuffer;
         stdoutBuffer.append(QString::fromLocal8Bit(outputData));
@@ -191,7 +769,7 @@ void CmakeBuilder::onProcessReadyRead()
 
         while (stream.readLineInto(&line)) {
             if (!line.isEmpty()) {
-                appendOutput(line, false);
+                Print(line, false);
             }
         }
 
@@ -200,7 +778,7 @@ void CmakeBuilder::onProcessReadyRead()
     }
 
     // 处理标准错误（类似）
-    QByteArray errorData = m_process->readAllStandardError();
+    QByteArray errorData = process_->readAllStandardError();
     if (!errorData.isEmpty()) {
         static QString stderrBuffer;
         stderrBuffer.append(QString::fromLocal8Bit(errorData));
@@ -210,7 +788,7 @@ void CmakeBuilder::onProcessReadyRead()
 
         while (stream.readLineInto(&line)) {
             if (!line.isEmpty()) {
-                appendOutput(line, true);
+                Print(line, true);
             }
         }
 
@@ -218,7 +796,7 @@ void CmakeBuilder::onProcessReadyRead()
     }
 }
 
-void CmakeBuilder::appendOutput(const QString& text, bool isError)
+void CmakeBuilder::Print(const QString& text, bool isError)
 {
     if (text.isEmpty()) {
         return;
@@ -293,19 +871,19 @@ void CmakeBuilder::onProcessFinished(int exitCode, QProcess::ExitStatus exitStat
     // 读取剩余的输出
     onProcessReadyRead();
 
-    appendOutput("----------------------------------------");
+    Print(SL);
 
     if (exitStatus == QProcess::NormalExit) {
         if (exitCode == 0) {
-            appendOutput("CMake 执行成功！");
-            appendOutput("----------------------------------------");
+            Print("CMake 执行成功！");
+            Print(SL);
         } else {
-            appendOutput("CMake 指令执行完成，但有警告或错误", true);
-            appendOutput("退出码: " + QString::number(exitCode), true);
-            appendOutput("----------------------------------------");
+            Print("CMake 指令执行完成，但有警告或错误。", true);
+            Print("退出码: " + QString::number(exitCode), true);
+            Print(SL);
         }
     } else {
-        appendOutput("CMake 进程异常退出", true);
+        Print("CMake 进程异常退出", true);
     }
 
     // 重新启用按钮
@@ -335,6 +913,6 @@ void CmakeBuilder::onProcessError(QProcess::ProcessError error)
         errorMsg = "未知错误";
     }
 
-    appendOutput("错误: " + errorMsg, true);
+    Print("错误: " + errorMsg, true);
     ui->btnConfig->setEnabled(true);
 }

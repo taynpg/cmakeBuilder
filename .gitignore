@@ -13,6 +13,7 @@
 
 # Linker files
 *.ilk
+*.autosave
 
 # Debugger Files
 *.pdb

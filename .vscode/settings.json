@@ -145,7 +145,8 @@
         "qdialog": "cpp",
         "quuid": "cpp",
         "complex": "cpp",
-        "expected": "cpp"
+        "expected": "cpp",
+        "qmessagebox": "cpp"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [

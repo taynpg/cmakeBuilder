@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>560</width>
-    <height>355</height>
+    <width>737</width>
+    <height>414</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,7 +15,7 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout">
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
       <widget class="QLabel" name="label">
        <property name="text">
@@ -24,14 +24,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="cbCMake">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-      </widget>
+      <widget class="QLineEdit" name="edCMake"/>
      </item>
      <item>
       <widget class="QPushButton" name="btnAddCmake">
@@ -40,24 +33,10 @@
        </property>
       </widget>
      </item>
-     <item>
-      <widget class="QPushButton" name="btnDelCMake">
-       <property name="text">
-        <string>删除</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnFindCMake">
-       <property name="text">
-        <string>发现</string>
-       </property>
-      </widget>
-     </item>
     </layout>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_2">
+    <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <widget class="QLabel" name="label_2">
        <property name="text">
@@ -66,26 +45,12 @@
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="cbSource">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-      </widget>
+      <widget class="QLineEdit" name="edSource"/>
      </item>
      <item>
       <widget class="QPushButton" name="btnSelSource">
        <property name="text">
         <string>选择</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnDelSource">
-       <property name="text">
-        <string>删除</string>
        </property>
       </widget>
      </item>
@@ -110,13 +75,6 @@
        </property>
       </widget>
      </item>
-     <item>
-      <widget class="QPushButton" name="btnSetBuildDir">
-       <property name="text">
-        <string>默认</string>
-       </property>
-      </widget>
-     </item>
     </layout>
    </item>
    <item>
@@ -129,12 +87,67 @@
       </widget>
      </item>
      <item>
-      <widget class="QLineEdit" name="edAdditionArg"/>
+      <widget class="QComboBox" name="cbAdditionArg">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+      </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="btnConfig">
+      <widget class="QPushButton" name="btnAddArg">
        <property name="text">
-        <string>配置</string>
+        <string>添加</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnDelArg">
+       <property name="text">
+        <string>删除</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_5">
+     <item>
+      <spacer name="horizontalSpacer_2">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnDelConfig">
+       <property name="text">
+        <string>删除</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="cbProject"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnLoadConfig">
+       <property name="text">
+        <string>加载</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnSaveConfig">
+       <property name="text">
+        <string>保存</string>
        </property>
       </widget>
      </item>
@@ -144,7 +157,7 @@
     <widget class="QPlainTextEdit" name="pedOutput"/>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_5">
+    <layout class="QHBoxLayout" name="horizontalLayout_6">
      <item>
       <widget class="QLabel" name="label_7">
        <property name="text">
@@ -178,7 +191,7 @@
      <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
-        <enum>Qt::Horizontal</enum>
+        <enum>Qt::Orientation::Horizontal</enum>
        </property>
        <property name="sizeHint" stdset="0">
         <size>
@@ -187,6 +200,13 @@
         </size>
        </property>
       </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnConfig">
+       <property name="text">
+        <string>CMake</string>
+       </property>
+      </widget>
      </item>
      <item>
       <widget class="QPushButton" name="btnReBuild">

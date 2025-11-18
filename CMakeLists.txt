@@ -17,11 +17,14 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Core)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib/${CMAKE_BUILD_TYPE})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin/${CMAKE_BUILD_TYPE}/) 
 
+include_directories(3rd)
+
 add_executable(cmakeBuilder
   main.cpp
   cmakebuilder.cpp
   cmakebuilder.h
   cmakebuilder.ui
+  res/ico.rc
 )
 
 target_link_libraries(cmakeBuilder PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Core)
