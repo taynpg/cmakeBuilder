@@ -14,6 +14,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network Concurrent)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent)
 
+set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib/${CMAKE_BUILD_TYPE})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin/${CMAKE_BUILD_TYPE}/) 
+
 add_executable(cmakeBuilder
   main.cpp
   cmakebuilder.cpp
@@ -22,3 +25,4 @@ add_executable(cmakeBuilder
 )
 
 target_link_libraries(cmakeBuilder PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+set_target_properties(cmakeBuilder PROPERTIES WIN32_EXECUTABLE TRUE)
