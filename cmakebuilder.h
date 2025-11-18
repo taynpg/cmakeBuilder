@@ -19,6 +19,7 @@ public:
 public:
     void TestInit();
     void TestConfig();
+    void TestBuild();
 
 private slots:
     void onProcessReadyRead();
@@ -28,6 +29,7 @@ private slots:
 private:
     QProcess *m_process;
     void appendOutput(const QString &text, bool isError = false);
+    QVector<QString> getTarget();
 
 private:
     Ui::CmakeBuilder *ui;

@@ -35,7 +35,12 @@ void CmakeBuilder::TestInit()
     ui->cbMode->addItem("Release");
     ui->cbMode->setCurrentIndex(0);
 
+    ui->cbTarget->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    ui->cbMode->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    ui->cbType->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+
     connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::TestConfig);
+    connect(ui->btnBuild, &QPushButton::clicked, this, &CmakeBuilder::TestBuild);
 }
 
 void CmakeBuilder::TestConfig()
@@ -91,6 +96,83 @@ void CmakeBuilder::TestConfig()
     if (!m_process->waitForStarted(5000)) {
         appendOutput("错误：启动 CMake 进程超时", true);
         ui->btnConfig->setEnabled(true);
+        return;
+    }
+
+    auto ret = getTarget();
+    ui->cbTarget->clear();
+    ui->cbTarget->addItem("all");
+    for (const auto& item : ret) {
+        ui->cbTarget->addItem(item);
+    }
+    ui->cbTarget->setCurrentIndex(0);
+}
+
+void CmakeBuilder::TestBuild()
+{
+    auto buildDir = ui->edBuildDir->text().trimmed();
+    auto cmake = ui->cbCMake->currentText();
+    auto target = ui->cbTarget->currentText();
+    auto mode = ui->cbMode->currentText();
+
+    // 检查进程是否正在运行
+    if (m_process->state() == QProcess::Running) {
+        appendOutput("CMake 进程正在运行，请等待完成...", true);
+        return;
+    }
+
+    // 检查构建目录是否存在
+    if (!QDir(buildDir).exists()) {
+        appendOutput("错误：构建目录不存在，请先执行配置", true);
+        return;
+    }
+
+    // 检查 CMakeCache.txt 是否存在（确保已配置）
+    if (!QFile::exists(buildDir + "/CMakeCache.txt")) {
+        appendOutput("错误：项目未配置，请先执行 CMake 配置", true);
+        return;
+    }
+
+    // 清空输出
+    ui->pedOutput->clear();
+
+    // 设置工作目录
+    m_process->setWorkingDirectory(buildDir);
+
+    // 准备 CMake 构建参数
+    QStringList arguments;
+    arguments << "--build" << buildDir;
+    
+    // 添加构建配置
+    arguments << "--config" << mode;
+
+    auto retTarget = QFileInfo(target).baseName();
+    arguments << "--target" << retTarget;
+    
+    // 添加并行构建选项（可选）
+    arguments << "--parallel";
+    
+    // 添加详细输出（可选）
+    // arguments << "--verbose";
+
+    appendOutput("开始执行 CMake 构建...");
+    appendOutput("命令: " + cmake + " " + arguments.join(" "));
+    appendOutput("目标: " + target);
+    appendOutput("配置: " + mode);
+    appendOutput("工作目录: " + buildDir);
+    appendOutput("----------------------------------------");
+
+    // 禁用按钮，防止重复点击
+    ui->btnConfig->setEnabled(false);
+    ui->btnBuild->setEnabled(false);
+
+    // 启动进程
+    m_process->start(cmake, arguments);
+
+    if (!m_process->waitForStarted(5000)) {
+        appendOutput("错误：启动 CMake 构建进程超时", true);
+        ui->btnConfig->setEnabled(true);
+        ui->btnBuild->setEnabled(true);
         return;
     }
 }
@@ -178,6 +260,34 @@ void CmakeBuilder::appendOutput(const QString& text, bool isError)
     ui->pedOutput->ensureCursorVisible();
 }
 
+QVector<QString> CmakeBuilder::getTarget()
+{
+    QVector<QString> targetFiles;
+
+    QString ninjaFile = ui->edBuildDir->text() + "/build.ninja";
+    QFile file(ninjaFile);
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        return targetFiles;
+    }
+
+    QTextStream stream(&file);
+    QString content = stream.readAll();
+    file.close();
+
+    // 使用正则表达式匹配所有 TARGET_FILE = 行
+    QRegularExpression regex(R"(TARGET_FILE\s*=\s*([^\s]+))");
+    QRegularExpressionMatchIterator matches = regex.globalMatch(content);
+
+    while (matches.hasNext()) {
+        QRegularExpressionMatch match = matches.next();
+        QString targetFile = match.captured(1).trimmed();
+        targetFiles.append(targetFile);
+    }
+    targetFiles = QSet<QString>(targetFiles.begin(), targetFiles.end()).values();
+    return targetFiles;
+}
+
 void CmakeBuilder::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
     // 读取剩余的输出
@@ -187,11 +297,12 @@ void CmakeBuilder::onProcessFinished(int exitCode, QProcess::ExitStatus exitStat
 
     if (exitStatus == QProcess::NormalExit) {
         if (exitCode == 0) {
-            appendOutput("CMake 配置完成成功！");
-            appendOutput("退出码: " + QString::number(exitCode));
+            appendOutput("CMake 执行成功！");
+            appendOutput("----------------------------------------");
         } else {
-            appendOutput("CMake 配置完成，但有警告或错误", true);
+            appendOutput("CMake 指令执行完成，但有警告或错误", true);
             appendOutput("退出码: " + QString::number(exitCode), true);
+            appendOutput("----------------------------------------");
         }
     } else {
         appendOutput("CMake 进程异常退出", true);
