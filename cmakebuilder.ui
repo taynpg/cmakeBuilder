@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>612</width>
-    <height>391</height>
+    <width>560</width>
+    <height>355</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -131,6 +131,13 @@
      <item>
       <widget class="QLineEdit" name="edAdditionArg"/>
      </item>
+     <item>
+      <widget class="QPushButton" name="btnConfig">
+       <property name="text">
+        <string>配置</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>
@@ -138,6 +145,16 @@
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_5">
+     <item>
+      <widget class="QLabel" name="label_7">
+       <property name="text">
+        <string>类型：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="cbType"/>
+     </item>
      <item>
       <widget class="QLabel" name="label_5">
        <property name="text">
@@ -170,20 +187,6 @@
         </size>
        </property>
       </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnConfig">
-       <property name="text">
-        <string>配置</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnClean">
-       <property name="text">
-        <string>清理</string>
-       </property>
-      </widget>
      </item>
      <item>
       <widget class="QPushButton" name="btnReBuild">
