@@ -53,8 +53,12 @@ private:
 public:
     void BaseInit();
     void cmakeConfig();
+    void cmakeConfigTest();
     void cmakeBuild();
     void cmakeReBuild();
+    // %comspec% /k "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Auxiliary\Build\vcvars64.bat"
+    QProcessEnvironment getVCEnvironment(const QString& vcvarsPath);
+    QProcessEnvironment parseEnvironmentOutput(const QString& output);
 
     void DisableBtn();
     void EnableBtn();

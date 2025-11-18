@@ -505,7 +505,7 @@ void CmakeBuilder::BaseInit()
     ui->cbMode->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     ui->cbType->setSizeAdjustPolicy(QComboBox::AdjustToContents);
 
-    connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::cmakeConfig);
+    connect(ui->btnConfig, &QPushButton::clicked, this, &CmakeBuilder::cmakeConfigTest);
     connect(ui->btnBuild, &QPushButton::clicked, this, &CmakeBuilder::cmakeBuild);
     connect(ui->btnAddCmake, &QPushButton::clicked, this, [this]() {
         QString fileName = QFileDialog::getOpenFileName(this, "选择 CMake 可执行文件", QDir::homePath(),
@@ -651,6 +651,140 @@ void CmakeBuilder::cmakeConfig()
             Print("错误：未找到 build.ninja 文件", true);
         }
     });
+}
+
+void CmakeBuilder::cmakeConfigTest()
+{
+    QString envBat = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017/Professional\\VC\\Auxiliary\\Build\\vcvars64.bat";
+
+    if (!QFile::exists(envBat)) {
+        QMessageBox::critical(this, "错误", "VC环境脚本不存在:\n" + envBat);
+        return;
+    }
+
+    // 获取配置参数
+    auto buildDir = ui->edBuildDir->text().trimmed();
+    auto cmake = ui->edCMake->text().trimmed();
+    auto sourceDir = ui->edSource->text().trimmed();
+    auto generator = ui->cbType->currentText();
+    auto mode = ui->cbMode->currentText();
+
+    // 验证参数
+    if (buildDir.isEmpty() || cmake.isEmpty() || sourceDir.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请先设置必要的路径");
+        return;
+    }
+
+    if (process_->state() == QProcess::Running) {
+        QMessageBox::information(this, "提示", "CMake 进程正在运行，请等待完成...");
+        return;
+    }
+
+    Print("=== 开始VC环境配置测试 ===");
+    Print("获取VC环境变量...");
+
+    // 1. 首先获取VC环境变量
+    QProcessEnvironment vsEnv = getVCEnvironment(envBat);
+    if (vsEnv.isEmpty()) {
+        Print("错误：无法获取VC环境变量", true);
+        return;
+    }
+
+    Print("VC环境变量获取成功");
+
+    // 2. 创建构建目录
+    QDir dir(buildDir);
+    if (!dir.exists()) {
+        if (!dir.mkpath(".")) {
+            Print("错误：无法创建构建目录 " + buildDir, true);
+            return;
+        }
+    }
+
+    process_->setWorkingDirectory(buildDir);
+
+    // 3. 构建CMake参数
+    QStringList arguments;
+    arguments << "-S" << sourceDir;
+    arguments << "-B" << buildDir;
+    arguments << "-G" << generator;
+    arguments << "-DCMAKE_BUILD_TYPE=" + mode;
+
+    // 添加附加参数
+    QString additionArg = ui->cbAdditionArg->currentText();
+    if (!additionArg.isEmpty()) {
+        arguments << additionArg;
+    }
+
+    Print("命令: " + cmake + " " + arguments.join(" "));
+    Print("工作目录: " + buildDir);
+    Print(SL);
+
+    DisableBtn();
+
+    // 4. 设置进程环境（关键步骤）
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(vsEnv);   // 添加VC环境变量
+    process_->setProcessEnvironment(env);
+
+    // 5. 启动CMake进程
+    process_->start(cmake, arguments);
+
+    if (!process_->waitForStarted(20000)) {
+        Print("错误：启动配置进程超时", true);
+        EnableBtn();
+        return;
+    }
+
+    Print("配置进程已启动...");
+}
+
+QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
+{
+    QProcess process;
+    process.setProgram("cmd.exe");
+    process.setArguments({"/c", "call", vcvarsPath, "&&", "set"});
+    Print("获取VC环境变量: " + vcvarsPath);
+    process.start();
+    
+    if (!process.waitForFinished(15000)) {
+        Print("错误：进程执行超时");
+        return QProcessEnvironment();
+    }
+    
+    if (process.exitCode() != 0) {
+        Print("错误：VC环境脚本执行失败");
+        return QProcessEnvironment();
+    }
+    
+    QString allOutput = QString::fromLocal8Bit(process.readAllStandardOutput());
+    
+    if (allOutput.isEmpty()) {
+        Print("错误：没有获取到输出");
+        return QProcessEnvironment();
+    }
+    Print("成功获取VC环境变量");
+    return parseEnvironmentOutput(allOutput);
+}
+
+QProcessEnvironment CmakeBuilder::parseEnvironmentOutput(const QString& output)
+{
+    QProcessEnvironment env;
+    QStringList lines = output.split('\n');
+    
+    for (const QString& line : lines) {
+        QString trimmedLine = line.trimmed();
+        if (trimmedLine.isEmpty()) continue;
+        
+        int equalsIndex = trimmedLine.indexOf('=');
+        if (equalsIndex > 0) {
+            QString varName = trimmedLine.left(equalsIndex).trimmed();
+            QString varValue = trimmedLine.mid(equalsIndex + 1).trimmed();
+            env.insert(varName, varValue);
+        }
+    }
+    
+    return env;
 }
 
 void CmakeBuilder::cmakeBuild()
