@@ -16,7 +16,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     InitData();
     LoadConfig();
     BaseInit();
-    setWindowTitle("cmakeBuilder v1.0")
+    setWindowTitle("cmakeBuilder v1.0");
 }
 
 CmakeBuilder::~CmakeBuilder()
