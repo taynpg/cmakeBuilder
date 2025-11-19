@@ -13,13 +13,16 @@ constexpr auto SL = "----------------------------------------------";
 CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeBuilder)
 {
     ui->setupUi(this);
+
+    config_ = new BuilderConfig(this);
+
     InitData();
     LoadConfig();
     BaseInit();
     setWindowTitle("cmakeBuilder v1.0.1");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
-    auto s = getSize();
+    auto s = config_->getSize();
     if (s.first != 0 && s.second != 0) {
         resize(s.first, s.second);
     }
@@ -36,7 +39,7 @@ void CmakeBuilder::closeEvent(QCloseEvent* event)
     int width = currentSize.width();
     int height = currentSize.height();
     if (width > 0 && height > 0) {
-        setSize(width, height);
+        config_->setSize(width, height);
     }
     QWidget::closeEvent(event);
 }
@@ -52,15 +55,17 @@ void CmakeBuilder::InitData()
             return;
         }
     }
-    configFile_ = configDir + "/config.json";
-    configUse_ = configDir + "/curuse.json";
-    configSize_ = configDir + "/size.json";
+
+    config_->setConfigDir(configDir + "/config.json");
+    config_->setConfigSizeDir(configDir + "/size.json");
+    config_->setConfigUseDir(configDir + "/curuse.json");
 
     ui->cbProject->setEditable(true);
     ui->cbProject->setMinimumWidth(150);
     ui->edCMake->setFocusPolicy(Qt::ClickFocus);
     ui->pedOutput->setReadOnly(true);
 
+    connect(this, &CmakeBuilder::sigPrint, this, [this](const QString& msg) { Print(msg); });
     connect(process_, &QProcess::readyReadStandardOutput, this, &CmakeBuilder::onProcessReadyRead);
     connect(process_, &QProcess::readyReadStandardError, this, &CmakeBuilder::onProcessReadyRead);
     connect(process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &CmakeBuilder::onProcessFinished);
@@ -72,7 +77,7 @@ void CmakeBuilder::InitData()
     connect(ui->btnReBuild, &QPushButton::clicked, this, &CmakeBuilder::cmakeReBuild);
     connect(ui->btnDelConfig, &QPushButton::clicked, this, [this]() {
         auto key = ui->cbProject->currentText();
-        if (DelData(key)) {
+        if (config_->DelData(key)) {
             int index = ui->cbProject->findText(key);
             if (index >= 0) {
                 ui->cbProject->removeItem(index);
@@ -88,18 +93,18 @@ void CmakeBuilder::InitData()
 void CmakeBuilder::LoadConfig()
 {
     QVector<QString> keys;
-    if (!GetAllKeys(keys)) {
+    if (!config_->GetAllKeys(keys)) {
         return;
     }
     QString curuse;
-    if (!GetCurUse(curuse)) {
+    if (!config_->GetCurUse(curuse)) {
         return;
     }
     if (!keys.contains(curuse)) {
         return;
     }
     OneConfig o;
-    if (!GetData(curuse, o)) {
+    if (!config_->GetData(curuse, o)) {
         return;
     }
     SetUi(o);
@@ -114,177 +119,11 @@ bool CmakeBuilder::SimpleLoad()
 {
     QString key = ui->cbProject->currentText();
     OneConfig o;
-    if (!GetData(key, o)) {
+    if (!config_->GetData(key, o)) {
         return false;
     }
     SetUi(o);
     return true;
-}
-
-bool CmakeBuilder::SaveData(const OneConfig& config)
-{
-    if (config.key.isEmpty()) {
-        QMessageBox::warning(nullptr, "警告", "配置键为空，无法保存");
-        return false;
-    }
-
-    try {
-        json j;
-
-        // 读取现有配置文件
-        loadJsonFromFile(j, configFile_);
-
-        // 更新或添加配置
-        j[config.key.toStdString()] = configToJson(config);
-
-        // 保存到文件
-        if (saveJsonToFile(j, configFile_)) {
-            QMessageBox::information(nullptr, "成功", QString("配置保存成功！\n键值：%1").arg(config.key));
-            return true;
-        }
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "错误", QString("保存配置时发生错误：\n%1").arg(e.what()));
-    }
-
-    return false;
-}
-
-bool CmakeBuilder::GetData(const QString& key, OneConfig& config)
-{
-    if (key.isEmpty()) {
-        QMessageBox::warning(nullptr, "警告", "配置键为空");
-        return false;
-    }
-
-    try {
-        json j;
-        if (!loadJsonFromFile(j, configFile_)) {
-            QMessageBox::information(nullptr, "提示", "配置文件不存在或读取失败");
-            return false;
-        }
-
-        if (!j.contains(key.toStdString())) {
-            QMessageBox::information(nullptr, "提示", QString("未找到键值为 '%1' 的配置").arg(key));
-            return false;
-        }
-
-        config = jsonToConfig(j[key.toStdString()]);
-        return true;
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "错误", QString("加载配置时发生错误：\n%1").arg(e.what()));
-        return false;
-    }
-}
-
-bool CmakeBuilder::DelData(const QString& key)
-{
-    if (key.isEmpty()) {
-        QMessageBox::warning(nullptr, "警告", "配置键为空，无法删除");
-        return false;
-    }
-
-    if (!QFile::exists(configFile_)) {
-        QMessageBox::information(nullptr, "提示", "配置文件不存在");
-        return false;
-    }
-
-    try {
-
-        json j;
-
-        if (!loadJsonFromFile(j, configFile_)) {
-            QMessageBox::critical(nullptr, "错误", "无法读取配置文件");
-            return false;
-        }
-
-        if (!j.contains(key.toStdString())) {
-            QMessageBox::information(nullptr, "提示", QString("未找到键值为 '%1' 的配置").arg(key));
-            return false;
-        }
-
-        QMessageBox::StandardButton reply;
-        reply = QMessageBox::question(nullptr, "确认删除", QString("确定要删除配置 '%1' 吗？").arg(key),
-                                      QMessageBox::Yes | QMessageBox::No);
-
-        if (reply != QMessageBox::Yes) {
-            return false;
-        }
-
-        QString currentKey;
-        if (GetCurUse(currentKey) && currentKey == key) {
-            QMessageBox::information(nullptr, "提示", "不能删除当前正在使用的配置，请先切换其他配置");
-            return false;
-        }
-
-        j.erase(key.toStdString());
-
-        if (saveJsonToFile(j, configFile_)) {
-            QMessageBox::information(nullptr, "成功", QString("配置 '%1' 删除成功").arg(key));
-            return true;
-        } else {
-            QMessageBox::critical(nullptr, "错误", "保存配置文件失败");
-            return false;
-        }
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "错误", QString("删除配置时发生错误：\n%1").arg(e.what()));
-        return false;
-    }
-}
-
-bool CmakeBuilder::SetCurUse(const QString& key)
-{
-    if (key.isEmpty()) {
-        QMessageBox::warning(nullptr, "警告", "配置键为空");
-        return false;
-    }
-
-    try {
-        // 验证配置是否存在
-        OneConfig config;
-        if (!GetData(key, config)) {
-            return false;
-        }
-
-        json j;
-        j["current_config"] = key.toStdString();
-        j["last_modified"] = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss").toStdString();
-
-        if (saveJsonToFile(j, configUse_)) {
-            return true;
-        }
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "错误", QString("设置当前配置时发生错误：\n%1").arg(e.what()));
-    }
-
-    return false;
-}
-
-bool CmakeBuilder::GetCurUse(QString& key)
-{
-    try {
-        json j;
-        if (!loadJsonFromFile(j, configUse_)) {
-            key.clear();
-            return false;
-        }
-
-        if (!j.contains("current_config")) {
-            key.clear();
-            return false;
-        }
-
-        key = QString::fromStdString(j["current_config"]);
-        return true;
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "错误", QString("获取当前配置时发生错误：\n%1").arg(e.what()));
-        key.clear();
-        return false;
-    }
 }
 
 OneConfig CmakeBuilder::ReadUi()
@@ -335,44 +174,11 @@ void CmakeBuilder::SaveCur(bool isNotice)
     }
     auto o = ReadUi();
     o.key = key;
-    if (!SaveData(o)) {
+    if (!config_->SaveData(o)) {
         QMessageBox::information(this, "提示", "保存失败");
         return;
     }
-    SetCurUse(o.key);
-}
-
-bool CmakeBuilder::GetAllKeys(QVector<QString>& keys)
-{
-    keys.clear();
-
-    if (!QFile::exists(configFile_)) {
-        return false;
-    }
-
-    try {
-        json j;
-        if (!loadJsonFromFile(j, configFile_)) {
-            QMessageBox::critical(nullptr, "错误", "无法读取配置文件");
-            return false;
-        }
-
-        // 遍历JSON对象的所有键
-        for (auto it = j.begin(); it != j.end(); ++it) {
-            keys.append(QString::fromStdString(it.key()));
-        }
-
-        if (keys.isEmpty()) {
-            QMessageBox::information(nullptr, "提示", "配置文件中没有找到任何配置");
-            return false;
-        }
-
-        return true;
-
-    } catch (const std::exception& e) {
-        QMessageBox::critical(nullptr, "错误", QString("读取配置键值时发生错误：\n%1").arg(e.what()));
-        return false;
-    }
+    config_->SetCurUse(o.key);
 }
 
 void CmakeBuilder::newArg()
@@ -427,180 +233,6 @@ void CmakeBuilder::delArg()
 
         QMessageBox::information(this, "成功", "参数项删除成功");
     }
-}
-
-void CmakeBuilder::setSize(int w, int h)
-{
-    if (w <= 0 || h <= 0) {
-        Print("错误：窗口尺寸必须大于0");
-        return;
-    }
-
-    if (configSize_.isEmpty()) {
-        Print("错误：配置文件路径未设置");
-        return;
-    }
-
-    try {
-        json j;
-
-        // 如果配置文件已存在，读取现有内容
-        if (QFile::exists(configSize_)) {
-            if (!loadJsonFromFile(j, configSize_)) {
-                Print("警告：无法读取现有配置文件，将创建新文件");
-            }
-        }
-
-        // 设置窗口尺寸
-        j["window_size"] = {{"width", w},
-                            {"height", h},
-                            {"last_modified", QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss").toStdString()}};
-
-        // 保存到文件
-        if (saveJsonToFile(j, configSize_)) {
-            // Print(QString("窗口尺寸已保存: %1 x %2").arg(w).arg(h));
-        } else {
-            Print("错误：保存窗口尺寸失败");
-        }
-
-    } catch (const std::exception& e) {
-        Print(QString("错误：设置窗口尺寸时发生异常: %1").arg(e.what()));
-    }
-}
-
-std::pair<int, int> CmakeBuilder::getSize()
-{
-    if (configSize_.isEmpty()) {
-        Print("错误：配置文件路径未设置");
-        return {0, 0};
-    }
-
-    if (!QFile::exists(configSize_)) {
-        Print("配置文件不存在，返回默认尺寸");
-        return {0, 0};
-    }
-
-    try {
-        json j;
-        if (!loadJsonFromFile(j, configSize_)) {
-            Print("错误：无法读取配置文件");
-            return {0, 0};
-        }
-
-        // 检查是否存在窗口尺寸配置
-        if (!j.contains("window_size")) {
-            Print("配置文件中未找到窗口尺寸设置");
-            return {0, 0};
-        }
-
-        json windowSize = j["window_size"];
-
-        // 验证字段存在性
-        if (!windowSize.contains("width") || !windowSize.contains("height")) {
-            Print("错误：窗口尺寸配置不完整");
-            return {0, 0};
-        }
-
-        int width = windowSize.value("width", 0);
-        int height = windowSize.value("height", 0);
-
-        if (width <= 0 || height <= 0) {
-            Print("警告：配置中的窗口尺寸无效");
-            return {0, 0};
-        }
-        return {width, height};
-
-    } catch (const std::exception& e) {
-        Print(QString("错误：读取窗口尺寸时发生异常: %1").arg(e.what()));
-        return {0, 0};
-    }
-}
-
-// 私有辅助函数
-bool CmakeBuilder::loadJsonFromFile(json& j, const QString& filename)
-{
-    if (!QFile::exists(filename)) {
-        j = json::object();   // 返回空JSON对象
-        return true;
-    }
-
-    std::ifstream inFile(filename.toStdString());
-    if (!inFile.is_open()) {
-        return false;
-    }
-
-    try {
-        inFile >> j;
-        inFile.close();
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
-bool CmakeBuilder::saveJsonToFile(const json& j, const QString& filename)
-{
-    std::ofstream outFile(filename.toStdString());
-    if (!outFile.is_open()) {
-        return false;
-    }
-
-    try {
-        outFile << j.dump(4);   // 美化输出，4空格缩进
-        outFile.close();
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
-OneConfig CmakeBuilder::jsonToConfig(const json& j)
-{
-    OneConfig config;
-
-    config.key = QString::fromStdString(j.value("key", ""));
-    config.cmakePath = QString::fromStdString(j.value("cmakePath", ""));
-    config.sourceDir = QString::fromStdString(j.value("sourceDir", ""));
-    config.buildDir = QString::fromStdString(j.value("buildDir", ""));
-    config.curMode = QString::fromStdString(j.value("curMode", ""));
-    config.curTarget = QString::fromStdString(j.value("curTarget", ""));
-    config.curType = QString::fromStdString(j.value("curType", ""));
-    config.curUseArg = QString::fromStdString(j.value("curUseArg", ""));
-    config.vcEnv = QString::fromStdString(j.value("vcEnv", ""));
-
-    // 处理一维数组 additonArgs
-    if (j.contains("additonArgs")) {
-        json argsArray = j["additonArgs"];
-        for (const auto& arg : argsArray) {
-            config.additonArgs.append(QString::fromStdString(arg));
-        }
-    }
-
-    return config;
-}
-
-json CmakeBuilder::configToJson(const OneConfig& config)
-{
-    json j;
-
-    j["key"] = config.key.toStdString();
-    j["cmakePath"] = config.cmakePath.toStdString();
-    j["sourceDir"] = config.sourceDir.toStdString();
-    j["buildDir"] = config.buildDir.toStdString();
-    j["curMode"] = config.curMode.toStdString();
-    j["curTarget"] = config.curTarget.toStdString();
-    j["curType"] = config.curType.toStdString();
-    j["curUseArg"] = config.curUseArg.toStdString();
-    j["vcEnv"] = config.vcEnv.toStdString();
-
-    // 处理一维数组 additonArgs
-    json argsArray = json::array();
-    for (const QString& arg : config.additonArgs) {
-        argsArray.push_back(arg.toStdString());
-    }
-    j["additonArgs"] = argsArray;
-
-    return j;
 }
 
 void CmakeBuilder::BaseInit()
@@ -662,24 +294,14 @@ void CmakeBuilder::BaseInit()
                                                             QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
 
         if (!dirPath.isEmpty()) {
-            QDir buildDir(dirPath);
-
-            if (!buildDir.exists()) {
-                ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
-            } else {
-                buildDir.setFilter(QDir::NoDotAndDotDot | QDir::AllEntries);
-                if (buildDir.count() == 0) {
-                    ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
-                } else {
-                    ui->edBuildDir->setText("");
-                }
-            }
+            ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
         }
     });
 }
 
 void CmakeBuilder::cmakeConfig()
 {
+    ui->pedOutput->clear();
     configRet_ = false;
     std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
@@ -707,7 +329,6 @@ void CmakeBuilder::cmakeConfig()
         }
     }
 
-    ui->pedOutput->clear();
     QDir dir(buildDir);
     if (!dir.exists()) {
         if (!dir.mkpath(".")) {
@@ -777,6 +398,7 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
         return;
     }
 
+    ui->pedOutput->clear();
     configRet_ = false;
     std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
@@ -801,14 +423,31 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
     Print("=== 开始VC环境配置测试 ===");
     Print("获取VC环境变量...");
 
-    // 1. 首先获取VC环境变量
-    QProcessEnvironment vsEnv = getVCEnvironment(envBat);
-    if (vsEnv.isEmpty()) {
-        Print("错误：无法获取VC环境变量", true);
-        return;
-    }
+    DisableBtn();
 
+    curEnvBatFile_ = envBat;
+    QFuture<QProcessEnvironment> future = QtConcurrent::run([&]() { return getVCEnvironment(curEnvBatFile_); });
+
+    QFutureWatcher<QProcessEnvironment>* watcher = new QFutureWatcher<QProcessEnvironment>(this);
+    connect(watcher, &QFutureWatcher<QProcessEnvironment>::finished, this, [this, watcher]() {
+        onVCEnvReady(watcher->result());
+        watcher->deleteLater();
+    });
+
+    watcher->setFuture(future);
+}
+
+void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
+{
     Print("VC环境变量获取成功");
+
+    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
+
+    auto buildDir = ui->edBuildDir->text().trimmed();
+    auto cmake = ui->edCMake->text().trimmed();
+    auto sourceDir = ui->edSource->text().trimmed();
+    auto generator = ui->cbType->currentText();
+    auto mode = ui->cbMode->currentText();
 
     // 2. 创建构建目录
     QDir dir(buildDir);
@@ -827,6 +466,9 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
     arguments << "-B" << buildDir;
     arguments << "-G" << generator;
     arguments << "-DCMAKE_BUILD_TYPE=" + mode;
+    arguments << "-DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE";
+    arguments << "-Wno-dev";
+    arguments << "--no-warn-unused-cli";
 
     // 添加附加参数
     QString additionArg = ui->cbAdditionArg->currentText();
@@ -876,30 +518,36 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
 
 QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
 {
+    if (!curVcEnv_.isEmpty() && curVcEnv_ == vcvarsPath) {
+        return curEnvValue_;
+    }
+
     QProcess process;
     process.setProgram("cmd.exe");
     process.setArguments({"/c", "call", vcvarsPath, "&&", "set"});
-    Print("获取VC环境变量: " + vcvarsPath);
+    sigPrint("获取VC环境变量: " + vcvarsPath);
     process.start();
 
     if (!process.waitForFinished(15000)) {
-        Print("错误：进程执行超时");
+        sigPrint("错误：进程执行超时");
         return QProcessEnvironment();
     }
 
     if (process.exitCode() != 0) {
-        Print("错误：VC环境脚本执行失败");
+        sigPrint("错误：VC环境脚本执行失败");
         return QProcessEnvironment();
     }
 
     QString allOutput = QString::fromLocal8Bit(process.readAllStandardOutput());
 
     if (allOutput.isEmpty()) {
-        Print("错误：没有获取到输出");
+        sigPrint("错误：没有获取到输出");
         return QProcessEnvironment();
     }
-    Print("成功获取VC环境变量");
-    return parseEnvironmentOutput(allOutput);
+    sigPrint("成功获取VC环境变量");
+    curVcEnv_ = vcvarsPath;
+    curEnvValue_ = parseEnvironmentOutput(allOutput);
+    return curEnvValue_;
 }
 
 QProcessEnvironment CmakeBuilder::parseEnvironmentOutput(const QString& output)
@@ -1094,13 +742,13 @@ void CmakeBuilder::Print(const QString& text, bool isError)
 
     // 2. 插入内容文本
     QTextCharFormat contentFormat;
-    if (isError) {
-        contentFormat.setForeground(QBrush(QColor(200, 0, 0)));   // 深红色错误信息
-        contentFormat.setFontWeight(QFont::Bold);
-    } else {
-        contentFormat.setForeground(QBrush(QColor(0, 0, 0)));   // 黑色普通信息
-        contentFormat.setFontWeight(QFont::Normal);
-    }
+    // if (isError) {
+    //     contentFormat.setForeground(QBrush(QColor(200, 0, 0)));   // 深红色错误信息
+    //     contentFormat.setFontWeight(QFont::Bold);
+    // } else {
+    contentFormat.setForeground(QBrush(QColor(0, 0, 0)));   // 黑色普通信息
+    contentFormat.setFontWeight(QFont::Normal);
+    //}
     cursor.setCharFormat(contentFormat);
     cursor.insertText(processedText);
 
