@@ -4,6 +4,7 @@
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QScrollBar>
 #include <QTimer>
 
 #include "./ui_cmakebuilder.h"
@@ -51,6 +52,7 @@ void CmakeBuilder::closeEvent(QCloseEvent* event)
 void CmakeBuilder::InitData()
 {
     process_ = new QProcess(this);
+
     auto configDir = QDir::homePath() + "/.config/cmakeBuilder";
     QDir dir(configDir);
     if (!dir.exists()) {
@@ -418,12 +420,10 @@ void CmakeBuilder::checkBuildNinjaFile(int attempt)
         return;
     }
     sigPrint("错误：等待 build.ninja 文件超时");
-    sigEnableBtn(true);
 }
 
 void CmakeBuilder::onBuildNinjaChanged(const QString& path)
 {
-    std::shared_ptr<void> recv(nullptr, [this](void*) { sigEnableBtn(true); });
     if (QFile::exists(buildFile_)) {
         auto ret = getTarget();
         ui->cbTarget->clear();
@@ -502,8 +502,6 @@ void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
 {
     Print("VC环境变量获取成功");
 
-    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
-
     auto buildDir = ui->edBuildDir->text().trimmed();
     auto cmake = ui->edCMake->text().trimmed();
     auto sourceDir = ui->edSource->text().trimmed();
@@ -547,7 +545,7 @@ void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
     process_->setProcessEnvironment(env);
     process_->start(cmake, arguments);
 
-    if (!process_->waitForStarted(20000)) {
+    if (!process_->waitForStarted(5000)) {
         Print("错误：启动配置进程超时", true);
         return;
     }
@@ -616,8 +614,6 @@ void CmakeBuilder::cmakeBuild()
         return;
     }
 
-    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
-
     auto buildDir = ui->edBuildDir->text().trimmed();
     auto cmake = ui->edCMake->text().trimmed();
     auto target = ui->cbTarget->currentText();
@@ -669,12 +665,40 @@ void CmakeBuilder::DisableBtn()
 {
     ui->btnBuild->setEnabled(false);
     ui->btnConfig->setEnabled(false);
+    ui->btnAddCmake->setEnabled(false);
+    ui->btnSelSource->setEnabled(false);
+    ui->btnSelBuildDir->setEnabled(false);
+    ui->btnAddArg->setEnabled(false);
+    ui->btnDelArg->setEnabled(false);
+    ui->btnClearEnv->setEnabled(false);
+    ui->btnClear->setEnabled(false);
+    ui->btnDelConfig->setEnabled(false);
+    ui->btnLoadConfig->setEnabled(false);
+    ui->btnSaveConfig->setEnabled(false);
+    ui->cbProject->setEnabled(false);
+    ui->cbType->setEnabled(false);
+    ui->cbMode->setEnabled(false);
+    ui->cbTarget->setEnabled(false);
 }
 
 void CmakeBuilder::EnableBtn()
 {
     ui->btnBuild->setEnabled(true);
     ui->btnConfig->setEnabled(true);
+    ui->btnAddCmake->setEnabled(true);
+    ui->btnSelSource->setEnabled(true);
+    ui->btnSelBuildDir->setEnabled(true);
+    ui->btnAddArg->setEnabled(true);
+    ui->btnDelArg->setEnabled(true);
+    ui->btnClearEnv->setEnabled(true);
+    ui->btnClear->setEnabled(true);
+    ui->btnDelConfig->setEnabled(true);
+    ui->btnLoadConfig->setEnabled(true);
+    ui->btnSaveConfig->setEnabled(true);
+    ui->cbProject->setEnabled(true);
+    ui->cbType->setEnabled(true);
+    ui->cbMode->setEnabled(true);
+    ui->cbTarget->setEnabled(true);
 }
 
 void CmakeBuilder::onProcessReadyRead()
@@ -725,19 +749,11 @@ void CmakeBuilder::Print(const QString& text, bool isError)
     }
 
     QString processedText = text;
-
-    // 处理多种换行情况
-    if (!processedText.endsWith('\n') && !processedText.endsWith('\r') && !processedText.endsWith(QChar::LineFeed)) {
-        processedText += '\n';
-    }
-
-    // 获取当前时间
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
 
     QTextCursor cursor = ui->pedOutput->textCursor();
     cursor.movePosition(QTextCursor::End);
 
-    // 1. 先插入时间戳（灰色）
     QTextCharFormat timeFormat;
     timeFormat.setForeground(QBrush(QColor(128, 128, 128)));   // 灰色时间戳
     timeFormat.setFontWeight(QFont::Normal);
@@ -754,10 +770,12 @@ void CmakeBuilder::Print(const QString& text, bool isError)
     contentFormat.setFontWeight(QFont::Normal);
     //}
     cursor.setCharFormat(contentFormat);
-    cursor.insertText(processedText);
+    cursor.insertText(processedText + "\n");
 
     // 自动滚动到底部
-    ui->pedOutput->ensureCursorVisible();
+    // ui->pedOutput->ensureCursorVisible();
+    QScrollBar* vScrollBar = ui->pedOutput->verticalScrollBar();
+    vScrollBar->setValue(vScrollBar->maximum());
 }
 
 QVector<QString> CmakeBuilder::getTarget()
@@ -806,8 +824,7 @@ void CmakeBuilder::onProcessFinished(int exitCode, QProcess::ExitStatus exitStat
         Print("CMake 进程异常退出", true);
     }
 
-    // 重新启用按钮
-    ui->btnConfig->setEnabled(true);
+    EnableBtn();
 }
 
 void CmakeBuilder::onProcessError(QProcess::ProcessError error)

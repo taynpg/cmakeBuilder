@@ -56,8 +56,8 @@ Q_SIGNALS:
     void sigEnableBtn(bool enable);
     void processBuildNinja();
 
-public
-    Q_SLOT : void Print(const QString& text, bool isError = false);
+public Q_SLOTS:
+    void Print(const QString& text, bool isError = false);
 
 private slots:
     void onProcessReadyRead();
