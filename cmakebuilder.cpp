@@ -19,7 +19,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     InitData();
     LoadConfig();
     BaseInit();
-    setWindowTitle("cmakeBuilder v1.0.1");
+    setWindowTitle("cmakeBuilder v1.0.2");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
     auto s = config_->getSize();
@@ -65,6 +65,9 @@ void CmakeBuilder::InitData()
     ui->edCMake->setFocusPolicy(Qt::ClickFocus);
     ui->pedOutput->setReadOnly(true);
 
+    ui->btnConfig->setStyleSheet("background-color: #e8f5e8;");
+    ui->btnBuild->setStyleSheet("background-color: #e3f2fd;");
+
     connect(this, &CmakeBuilder::sigPrint, this, [this](const QString& msg) { Print(msg); });
     connect(process_, &QProcess::readyReadStandardOutput, this, &CmakeBuilder::onProcessReadyRead);
     connect(process_, &QProcess::readyReadStandardError, this, &CmakeBuilder::onProcessReadyRead);
@@ -74,8 +77,11 @@ void CmakeBuilder::InitData()
     connect(ui->btnLoadConfig, &QPushButton::clicked, this, &CmakeBuilder::SimpleLoad);
     connect(ui->btnAddArg, &QPushButton::clicked, this, &CmakeBuilder::newArg);
     connect(ui->btnDelArg, &QPushButton::clicked, this, &CmakeBuilder::delArg);
-    connect(ui->btnReBuild, &QPushButton::clicked, this, &CmakeBuilder::cmakeReBuild);
     connect(ui->btnDelConfig, &QPushButton::clicked, this, [this]() {
+        int ret = QMessageBox::question(this, "确认操作", "确定要删除吗？");
+        if (ret != QMessageBox::Yes) {
+            return;
+        }
         auto key = ui->cbProject->currentText();
         if (config_->DelData(key)) {
             QMessageBox::information(this, "提示", "已删除");
@@ -95,6 +101,24 @@ void CmakeBuilder::InitData()
             EnableBtn();
         } else {
             DisableBtn();
+        }
+    });
+    connect(this, &CmakeBuilder::processBuildNinja, this, [this]() { onBuildNinjaChanged(""); });
+    connect(ui->btnClear, &QPushButton::clicked, this, [this]() {
+        int ret = QMessageBox::question(this, "确认操作", "确定要清空CMake配置吗？");
+        if (ret != QMessageBox::Yes) {
+            return;
+        }
+        Print("开始清空...");
+        auto buildDir = ui->edBuildDir->text().trimmed();
+        QDir dir(buildDir);
+        if (dir.exists()) {
+            if (dir.removeRecursively()) {
+                Print("已清空旧模式的构建目录: " + buildDir);
+                QDir().mkpath(buildDir);
+            } else {
+                Print("错误: 无法清空构建目录: " + buildDir);
+            }
         }
     });
 }
@@ -346,6 +370,8 @@ void CmakeBuilder::cmakeConfig()
         }
     }
     process_->setWorkingDirectory(buildDir);
+    buildFile_ = buildDir + "/build.ninja";
+
     QStringList arguments;
     arguments << "-S" << ui->edSource->text().trimmed();
     arguments << "-B" << buildDir;
@@ -368,31 +394,49 @@ void CmakeBuilder::cmakeConfig()
         Print("错误：启动 CMake 进程超时", true);
         return;
     }
-    QTimer::singleShot(2000, [=]() {
-        std::shared_ptr<void> recv(nullptr, [this](void*) { sigEnableBtn(true); });
-        QString buildNinjaPath = buildDir + "/build.ninja";
-        if (QFile::exists(buildNinjaPath)) {
-            auto ret = getTarget();
-            ui->cbTarget->clear();
-            ui->cbTarget->addItem("all");
-            for (const auto& item : ret) {
-                ui->cbTarget->addItem(item);
-            }
-            if (!curTarget_.isEmpty()) {
-                auto index = ui->cbTarget->findText(curTarget_);
-                if (index >= 0) {
-                    ui->cbTarget->setCurrentIndex(index);
-                } else {
-                    ui->cbTarget->setCurrentIndex(0);
-                }
-            }
-            curTarget_ = ui->cbTarget->currentText();
-            curType_ = ui->cbMode->currentText();
-            configRet_ = true;
-        } else {
-            Print("错误：未找到 build.ninja 文件", true);
+    checkBuildNinjaFile();
+}
+
+void CmakeBuilder::checkBuildNinjaFile(int attempt)
+{
+    const int maxAttempts = 50;   // 最多尝试50次（10秒）
+    const int interval = 200;     // 每次间隔200ms
+    if (QFile::exists(buildFile_)) {
+        emit processBuildNinja();
+        return;
+    }
+    if (attempt < maxAttempts) {
+        QTimer::singleShot(interval, this, [this, attempt]() { checkBuildNinjaFile(attempt + 1); });
+        return;
+    }
+    sigPrint("错误：等待 build.ninja 文件超时");
+    sigEnableBtn(true);
+}
+
+void CmakeBuilder::onBuildNinjaChanged(const QString& path)
+{
+    std::shared_ptr<void> recv(nullptr, [this](void*) { sigEnableBtn(true); });
+    if (QFile::exists(buildFile_)) {
+        auto ret = getTarget();
+        ui->cbTarget->clear();
+        ui->cbTarget->addItem("all");
+        for (const auto& item : ret) {
+            ui->cbTarget->addItem(item);
         }
-    });
+        if (!curTarget_.isEmpty()) {
+            auto index = ui->cbTarget->findText(curTarget_);
+            if (index >= 0) {
+                ui->cbTarget->setCurrentIndex(index);
+            } else {
+                ui->cbTarget->setCurrentIndex(0);
+            }
+        }
+        curTarget_ = ui->cbTarget->currentText();
+        curType_ = ui->cbMode->currentText();
+        configRet_ = true;
+    } else {
+        Print("错误：未找到 build.ninja 文件", true);
+    }
 }
 
 void CmakeBuilder::cmakeConfigWithVCEnv()
@@ -433,7 +477,7 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
     Print("获取VC环境变量...");
 
     DisableBtn();
-
+    buildFile_ = buildDir + "/build.ninja";
     curEnvBatFile_ = envBat;
     QFuture<QProcessEnvironment> future = QtConcurrent::run([&]() { return getVCEnvironment(curEnvBatFile_); });
 
@@ -499,30 +543,7 @@ void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
         Print("错误：启动配置进程超时", true);
         return;
     }
-    QTimer::singleShot(1000, [=]() {
-        QString buildNinjaPath = buildDir + "/build.ninja";
-        if (QFile::exists(buildNinjaPath)) {
-            auto ret = getTarget();
-            ui->cbTarget->clear();
-            ui->cbTarget->addItem("all");
-            for (const auto& item : ret) {
-                ui->cbTarget->addItem(item);
-            }
-            if (!curTarget_.isEmpty()) {
-                auto index = ui->cbTarget->findText(curTarget_);
-                if (index >= 0) {
-                    ui->cbTarget->setCurrentIndex(index);
-                } else {
-                    ui->cbTarget->setCurrentIndex(0);
-                }
-            }
-            curTarget_ = ui->cbTarget->currentText();
-            curType_ = ui->cbMode->currentText();
-            configRet_ = true;
-        } else {
-            Print("错误：未找到 build.ninja 文件", true);
-        }
-    });
+    checkBuildNinjaFile();
 }
 
 QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
@@ -636,49 +657,15 @@ void CmakeBuilder::cmakeBuild()
     }
 }
 
-void CmakeBuilder::cmakeReBuild()
-{
-    QMessageBox::StandardButton reply = QMessageBox::question(this, "确认重新构建",
-                                                              "确定要重新执行 CMake 配置吗？\n"
-                                                              "这将清空构建目录并重新生成构建文件。",
-                                                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-
-    if (reply != QMessageBox::Yes) {
-        Print("用户取消重新构建");
-        return;
-    }
-
-    Print("重新构建开始...");
-    auto buildDir = ui->edBuildDir->text().trimmed();
-    QDir dir(buildDir);
-    if (dir.exists()) {
-        if (dir.removeRecursively()) {
-            Print("已清空旧模式的构建目录: " + buildDir);
-            QDir().mkpath(buildDir);
-        } else {
-            Print("错误: 无法清空构建目录: " + buildDir);
-        }
-    }
-    cmakeConfig();
-    QTimer::singleShot(3000, [this]() {
-        if (!configRet_) {
-            return;
-        }
-        cmakeBuild();
-    });
-}
-
 void CmakeBuilder::DisableBtn()
 {
     ui->btnBuild->setEnabled(false);
-    ui->btnReBuild->setEnabled(false);
     ui->btnConfig->setEnabled(false);
 }
 
 void CmakeBuilder::EnableBtn()
 {
     ui->btnBuild->setEnabled(true);
-    ui->btnReBuild->setEnabled(true);
     ui->btnConfig->setEnabled(true);
 }
 
@@ -768,9 +755,7 @@ void CmakeBuilder::Print(const QString& text, bool isError)
 QVector<QString> CmakeBuilder::getTarget()
 {
     QVector<QString> targetFiles;
-
-    QString ninjaFile = ui->edBuildDir->text() + "/build.ninja";
-    QFile file(ninjaFile);
+    QFile file(buildFile_);
 
     if (!file.open(QIODevice::ReadOnly)) {
         return targetFiles;

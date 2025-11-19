@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>671</width>
-    <height>324</height>
+    <width>654</width>
+    <height>306</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -128,6 +128,13 @@
       </spacer>
      </item>
      <item>
+      <widget class="QPushButton" name="btnClear">
+       <property name="text">
+        <string>清理CMake</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="btnDelConfig">
        <property name="text">
         <string>删除</string>
@@ -226,13 +233,6 @@
       <widget class="QPushButton" name="btnConfig">
        <property name="text">
         <string>CMake</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnReBuild">
-       <property name="text">
-        <string>重新构建</string>
        </property>
       </widget>
      </item>

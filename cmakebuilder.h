@@ -41,8 +41,9 @@ public:
     void cmakeConfig();
     void cmakeConfigWithVCEnv();
     void cmakeBuild();
-    void cmakeReBuild();
+    void checkBuildNinjaFile(int attempt = 0);
     void onVCEnvReady(QProcessEnvironment vsEnv);
+    void onBuildNinjaChanged(const QString& path);
 
     QProcessEnvironment getVCEnvironment(const QString& vcvarsPath);
     QProcessEnvironment parseEnvironmentOutput(const QString& output);
@@ -53,9 +54,10 @@ public:
 Q_SIGNALS:
     void sigPrint(const QString& msg);
     void sigEnableBtn(bool enable);
+    void processBuildNinja();
 
-public Q_SLOT:
-    void Print(const QString& text, bool isError = false);
+public
+    Q_SLOT : void Print(const QString& text, bool isError = false);
 
 private slots:
     void onProcessReadyRead();
@@ -72,6 +74,7 @@ private:
     QString curTarget_;
     QString curVcEnv_;
     QString curEnvBatFile_;
+    QString buildFile_;
     QProcessEnvironment curEnvValue_;
     bool configRet_;
 
