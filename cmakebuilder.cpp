@@ -392,6 +392,9 @@ void CmakeBuilder::cmakeConfig()
     Print(SL);
 
     DisableBtn();
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    process_->setProcessEnvironment(env);
     process_->start(cmake, arguments);
 
     if (!process_->waitForStarted(20000)) {
