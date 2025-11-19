@@ -120,6 +120,7 @@ void CmakeBuilder::InitData()
             if (dir.removeRecursively()) {
                 Print("已清空旧模式的构建目录: " + buildDir);
                 QDir().mkpath(buildDir);
+                ui->cbTarget->clear();
             } else {
                 Print("错误: 无法清空构建目录: " + buildDir);
             }
