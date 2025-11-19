@@ -679,6 +679,11 @@ void CmakeBuilder::DisableBtn()
     ui->cbType->setEnabled(false);
     ui->cbMode->setEnabled(false);
     ui->cbTarget->setEnabled(false);
+    ui->edBuildDir->setEnabled(false);
+    ui->edSource->setEnabled(false);
+    ui->edBuildDir->setEnabled(false);
+    ui->edVcEnv->setEnabled(false);
+    ui->edCMake->setEnabled(false);
 }
 
 void CmakeBuilder::EnableBtn()
@@ -699,46 +704,52 @@ void CmakeBuilder::EnableBtn()
     ui->cbType->setEnabled(true);
     ui->cbMode->setEnabled(true);
     ui->cbTarget->setEnabled(true);
+    ui->edBuildDir->setEnabled(true);
+    ui->edSource->setEnabled(true);
+    ui->edBuildDir->setEnabled(true);
+    ui->edVcEnv->setEnabled(true);
+    ui->edCMake->setEnabled(true);
 }
 
 void CmakeBuilder::onProcessReadyRead()
 {
-    // 处理标准输出
     QByteArray outputData = process_->readAllStandardOutput();
     if (!outputData.isEmpty()) {
         static QString stdoutBuffer;
         stdoutBuffer.append(QString::fromLocal8Bit(outputData));
 
-        // 使用 QTextStream 按行读取
-        QTextStream stream(&stdoutBuffer);
-        QString line;
+        // 手动按换行符分割
+        int newlinePos;
+        while ((newlinePos = stdoutBuffer.indexOf('\n')) != -1) {
+            QString line = stdoutBuffer.left(newlinePos).trimmed();
+            stdoutBuffer = stdoutBuffer.mid(newlinePos + 1);
 
-        while (stream.readLineInto(&line)) {
             if (!line.isEmpty()) {
                 Print(line, false);
             }
         }
 
-        // 保存剩余的不完整行
-        stdoutBuffer = stream.readAll();
+        // stdoutBuffer 中保留的是不完整的行
     }
 
-    // 处理标准错误（类似）
+    // 处理标准错误（和标准输出一样的方案3）
     QByteArray errorData = process_->readAllStandardError();
     if (!errorData.isEmpty()) {
         static QString stderrBuffer;
         stderrBuffer.append(QString::fromLocal8Bit(errorData));
 
-        QTextStream stream(&stderrBuffer);
-        QString line;
+        // 手动按换行符分割处理
+        int newlinePos;
+        while ((newlinePos = stderrBuffer.indexOf('\n')) != -1) {
+            QString line = stderrBuffer.left(newlinePos).trimmed();
+            stderrBuffer = stderrBuffer.mid(newlinePos + 1);
 
-        while (stream.readLineInto(&line)) {
             if (!line.isEmpty()) {
-                Print(line, true);
+                Print(line, true);   // 第二个参数为true，表示错误输出
             }
         }
 
-        stderrBuffer = stream.readAll();
+        // stderrBuffer 自动保留不完整的行
     }
 }
 
