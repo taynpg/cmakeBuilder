@@ -41,6 +41,10 @@ void CmakeBuilder::closeEvent(QCloseEvent* event)
     if (width > 0 && height > 0) {
         config_->setSize(width, height);
     }
+    auto cur = ui->cbProject->currentText();
+    if (!cur.isEmpty()) {
+        config_->SetCurUse(ui->cbProject->currentText());
+    }
     QWidget::closeEvent(event);
 }
 
