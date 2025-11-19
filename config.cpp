@@ -295,11 +295,11 @@ bool ConfigPrivate::DelData(const QString& key)
             return false;
         }
 
-        QString currentKey;
-        if (GetCurUse(currentKey) && currentKey == key) {
-            SetError("不能删除当前正在使用的配置，请先切换其他配置");
-            return false;
-        }
+        // QString currentKey;
+        // if (GetCurUse(currentKey) && currentKey == key) {
+        //     SetError("不能删除当前正在使用的配置，请先切换其他配置");
+        //     return false;
+        // }
 
         j.erase(key.toStdString());
 

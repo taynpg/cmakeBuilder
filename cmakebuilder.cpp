@@ -78,6 +78,7 @@ void CmakeBuilder::InitData()
     connect(ui->btnDelConfig, &QPushButton::clicked, this, [this]() {
         auto key = ui->cbProject->currentText();
         if (config_->DelData(key)) {
+            QMessageBox::information(this, "提示", "已删除");
             int index = ui->cbProject->findText(key);
             if (index >= 0) {
                 ui->cbProject->removeItem(index);
@@ -85,9 +86,17 @@ void CmakeBuilder::InitData()
             if (ui->cbProject->count() > 0) {
                 ui->cbProject->setCurrentIndex(0);
             }
+            config_->SetCurUse(ui->cbProject->currentText());
         }
     });
     connect(ui->btnClearEnv, &QPushButton::clicked, this, [this]() { ui->edVcEnv->clear(); });
+    connect(this, &CmakeBuilder::sigEnableBtn, this, [this](bool enable) {
+        if (enable) {
+            EnableBtn();
+        } else {
+            DisableBtn();
+        }
+    });
 }
 
 void CmakeBuilder::LoadConfig()
@@ -179,6 +188,7 @@ void CmakeBuilder::SaveCur(bool isNotice)
         return;
     }
     config_->SetCurUse(o.key);
+    QMessageBox::information(this, "提示", "已保存。");
 }
 
 void CmakeBuilder::newArg()
@@ -303,7 +313,6 @@ void CmakeBuilder::cmakeConfig()
 {
     ui->pedOutput->clear();
     configRet_ = false;
-    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
     auto buildDir = ui->edBuildDir->text().trimmed();
     auto cmake = ui->edCMake->text().trimmed();
@@ -359,7 +368,8 @@ void CmakeBuilder::cmakeConfig()
         Print("错误：启动 CMake 进程超时", true);
         return;
     }
-    QTimer::singleShot(1000, [=]() {
+    QTimer::singleShot(2000, [=]() {
+        std::shared_ptr<void> recv(nullptr, [this](void*) { sigEnableBtn(true); });
         QString buildNinjaPath = buildDir + "/build.ninja";
         if (QFile::exists(buildNinjaPath)) {
             auto ret = getTarget();
@@ -400,7 +410,6 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
 
     ui->pedOutput->clear();
     configRet_ = false;
-    std::shared_ptr<void> recv(nullptr, [this](void*) { EnableBtn(); });
 
     // 获取配置参数
     auto buildDir = ui->edBuildDir->text().trimmed();
@@ -651,7 +660,7 @@ void CmakeBuilder::cmakeReBuild()
         }
     }
     cmakeConfig();
-    QTimer::singleShot(1500, [this]() {
+    QTimer::singleShot(3000, [this]() {
         if (!configRet_) {
             return;
         }

@@ -52,6 +52,7 @@ public:
 
 Q_SIGNALS:
     void sigPrint(const QString& msg);
+    void sigEnableBtn(bool enable);
 
 public Q_SLOT:
     void Print(const QString& text, bool isError = false);
