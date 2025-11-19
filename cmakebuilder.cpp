@@ -20,7 +20,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     InitData();
     LoadConfig();
     BaseInit();
-    setWindowTitle("cmakeBuilder v1.0.3");
+    setWindowTitle("cmakeBuilder v1.0.5");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
     auto s = config_->getSize();
@@ -684,6 +684,7 @@ void CmakeBuilder::DisableBtn()
     ui->edBuildDir->setEnabled(false);
     ui->edVcEnv->setEnabled(false);
     ui->edCMake->setEnabled(false);
+    ui->cbAdditionArg->setEnabled(false);
 }
 
 void CmakeBuilder::EnableBtn()
@@ -709,6 +710,7 @@ void CmakeBuilder::EnableBtn()
     ui->edBuildDir->setEnabled(true);
     ui->edVcEnv->setEnabled(true);
     ui->edCMake->setEnabled(true);
+    ui->cbAdditionArg->setEnabled(true);
 }
 
 void CmakeBuilder::onProcessReadyRead()
