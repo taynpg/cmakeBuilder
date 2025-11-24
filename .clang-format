@@ -6,7 +6,6 @@ ReflowComments: true
 SpacesBeforeTrailingComments: 3
 AllowShortFunctionsOnASingleLine: None
 AllowShortEnumsOnASingleLine: false
-AllowEnum
 BreakBeforeBraces: Custom
 BraceWrapping:
     AfterFunction: true

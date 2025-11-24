@@ -35,6 +35,7 @@ private:
     void SaveCur(bool isNotice);
     void newArg();
     void delArg();
+    void terminalProcess();
 
 public:
     void BaseInit();

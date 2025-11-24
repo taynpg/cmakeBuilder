@@ -128,6 +128,8 @@ void CmakeBuilder::InitData()
             }
         }
     });
+
+    connect(ui->btnCancel, &QPushButton::clicked, this, &CmakeBuilder::terminalProcess);
 }
 
 void CmakeBuilder::LoadConfig()
@@ -249,6 +251,11 @@ void CmakeBuilder::newArg()
     }
 }
 
+void CmakeBuilder::terminalProcess()
+{
+    process_->terminate();
+}
+
 void CmakeBuilder::delArg()
 {
     QString currentText = ui->cbAdditionArg->currentText();
@@ -338,6 +345,7 @@ void CmakeBuilder::BaseInit()
             ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
         }
     });
+    ui->btnCancel->setEnabled(false);
 }
 
 void CmakeBuilder::cmakeConfig()
@@ -685,6 +693,7 @@ void CmakeBuilder::DisableBtn()
     ui->edVcEnv->setEnabled(false);
     ui->edCMake->setEnabled(false);
     ui->cbAdditionArg->setEnabled(false);
+    ui->btnCancel->setEnabled(true);
 }
 
 void CmakeBuilder::EnableBtn()
@@ -711,6 +720,7 @@ void CmakeBuilder::EnableBtn()
     ui->edVcEnv->setEnabled(true);
     ui->edCMake->setEnabled(true);
     ui->cbAdditionArg->setEnabled(true);
+    ui->btnCancel->setEnabled(false);
 }
 
 void CmakeBuilder::onProcessReadyRead()
@@ -776,8 +786,8 @@ void CmakeBuilder::Print(const QString& text, bool isError)
     // 2. 插入内容文本
     QTextCharFormat contentFormat;
     // if (isError) {
-    //     contentFormat.setForeground(QBrush(QColor(200, 0, 0)));   // 深红色错误信息
-    //     contentFormat.setFontWeight(QFont::Bold);
+    //     contentFormat.setForeground(QBrush(QColor(200, 0, 0)));   //
+    //     深红色错误信息 contentFormat.setFontWeight(QFont::Bold);
     // } else {
     contentFormat.setForeground(QBrush(QColor(0, 0, 0)));   // 黑色普通信息
     contentFormat.setFontWeight(QFont::Normal);
