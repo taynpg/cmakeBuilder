@@ -20,6 +20,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     InitData();
     LoadConfig();
     BaseInit();
+
     setWindowTitle("cmakeBuilder v1.0.5");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
@@ -253,7 +254,9 @@ void CmakeBuilder::newArg()
 
 void CmakeBuilder::terminalProcess()
 {
-    process_->terminate();
+    //process_->terminate();
+    Print("强制终止cmake执行...");
+    process_->kill();
 }
 
 void CmakeBuilder::delArg()
@@ -693,7 +696,7 @@ void CmakeBuilder::DisableBtn()
     ui->edVcEnv->setEnabled(false);
     ui->edCMake->setEnabled(false);
     ui->cbAdditionArg->setEnabled(false);
-    ui->btnCancel->setEnabled(true);
+    //ui->btnCancel->setEnabled(true);
 }
 
 void CmakeBuilder::EnableBtn()
@@ -720,7 +723,7 @@ void CmakeBuilder::EnableBtn()
     ui->edVcEnv->setEnabled(true);
     ui->edCMake->setEnabled(true);
     ui->cbAdditionArg->setEnabled(true);
-    ui->btnCancel->setEnabled(false);
+    //ui->btnCancel->setEnabled(false);
 }
 
 void CmakeBuilder::onProcessReadyRead()
