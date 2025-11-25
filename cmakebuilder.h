@@ -42,7 +42,6 @@ public:
     void cmakeConfig();
     void cmakeConfigWithVCEnv();
     void cmakeBuild();
-    void checkBuildNinjaFile(int attempt = 0);
     void onVCEnvReady(QProcessEnvironment vsEnv);
     void onBuildNinjaChanged(const QString& path);
 
@@ -55,7 +54,6 @@ public:
 Q_SIGNALS:
     void sigPrint(const QString& msg);
     void sigEnableBtn(bool enable);
-    void processBuildNinja();
 
 public Q_SLOTS:
     void Print(const QString& text, bool isError = false);
@@ -76,6 +74,7 @@ private:
     QString curVcEnv_;
     QString curEnvBatFile_;
     QString buildFile_;
+    QString currentTaskName_;
     QProcessEnvironment curEnvValue_;
     bool configRet_;
 

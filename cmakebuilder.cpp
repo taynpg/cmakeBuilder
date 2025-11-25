@@ -21,7 +21,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     LoadConfig();
     BaseInit();
 
-    setWindowTitle("cmakeBuilder v1.0.5");
+    setWindowTitle("cmakeBuilder v1.0.6");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
     auto s = config_->getSize();
@@ -110,7 +110,7 @@ void CmakeBuilder::InitData()
             DisableBtn();
         }
     });
-    connect(this, &CmakeBuilder::processBuildNinja, this, [this]() { onBuildNinjaChanged(""); });
+
     connect(ui->btnClear, &QPushButton::clicked, this, [this]() {
         int ret = QMessageBox::question(this, "确认操作", "确定要清空CMake配置吗？");
         if (ret != QMessageBox::Yes) {
@@ -254,7 +254,7 @@ void CmakeBuilder::newArg()
 
 void CmakeBuilder::terminalProcess()
 {
-    //process_->terminate();
+    // process_->terminate();
     Print("强制终止cmake执行...");
     process_->kill();
 }
@@ -348,7 +348,7 @@ void CmakeBuilder::BaseInit()
             ui->edBuildDir->setText(QDir::toNativeSeparators(dirPath));
         }
     });
-    ui->btnCancel->setEnabled(false);
+    // ui->btnCancel->setEnabled(false);
 }
 
 void CmakeBuilder::cmakeConfig()
@@ -361,6 +361,7 @@ void CmakeBuilder::cmakeConfig()
     auto target = ui->cbTarget->currentText();
     auto mode = ui->cbMode->currentText();
     curTarget_ = ui->cbTarget->currentText();
+    ui->cbTarget->clear();
 
     if (process_->state() == QProcess::Running) {
         Print("CMake 进程正在运行，请等待完成...", true);
@@ -411,26 +412,11 @@ void CmakeBuilder::cmakeConfig()
     process_->setProcessEnvironment(env);
     process_->start(cmake, arguments);
 
+    currentTaskName_ = "config";
     if (!process_->waitForStarted(20000)) {
         Print("错误：启动 CMake 进程超时", true);
         return;
     }
-    checkBuildNinjaFile();
-}
-
-void CmakeBuilder::checkBuildNinjaFile(int attempt)
-{
-    const int maxAttempts = 50;   // 最多尝试50次（10秒）
-    const int interval = 200;     // 每次间隔200ms
-    if (QFile::exists(buildFile_)) {
-        emit processBuildNinja();
-        return;
-    }
-    if (attempt < maxAttempts) {
-        QTimer::singleShot(interval, this, [this, attempt]() { checkBuildNinjaFile(attempt + 1); });
-        return;
-    }
-    sigPrint("错误：等待 build.ninja 文件超时");
 }
 
 void CmakeBuilder::onBuildNinjaChanged(const QString& path)
@@ -479,6 +465,10 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
     auto cmake = ui->edCMake->text().trimmed();
     auto sourceDir = ui->edSource->text().trimmed();
     auto generator = ui->cbType->currentText();
+
+    curTarget_ = ui->cbTarget->currentText();
+    ui->cbTarget->clear();
+
     auto mode = ui->cbMode->currentText();
 
     // 验证参数
@@ -556,11 +546,11 @@ void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
     process_->setProcessEnvironment(env);
     process_->start(cmake, arguments);
 
+    currentTaskName_ = "config";
     if (!process_->waitForStarted(5000)) {
         Print("错误：启动配置进程超时", true);
         return;
     }
-    checkBuildNinjaFile();
 }
 
 QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
@@ -696,7 +686,7 @@ void CmakeBuilder::DisableBtn()
     ui->edVcEnv->setEnabled(false);
     ui->edCMake->setEnabled(false);
     ui->cbAdditionArg->setEnabled(false);
-    //ui->btnCancel->setEnabled(true);
+    // ui->btnCancel->setEnabled(true);
 }
 
 void CmakeBuilder::EnableBtn()
@@ -723,7 +713,7 @@ void CmakeBuilder::EnableBtn()
     ui->edVcEnv->setEnabled(true);
     ui->edCMake->setEnabled(true);
     ui->cbAdditionArg->setEnabled(true);
-    //ui->btnCancel->setEnabled(false);
+    // ui->btnCancel->setEnabled(false);
 }
 
 void CmakeBuilder::onProcessReadyRead()
@@ -837,10 +827,18 @@ void CmakeBuilder::onProcessFinished(int exitCode, QProcess::ExitStatus exitStat
 
     Print(SL);
 
+    auto afterFinish = [this]() {
+        std::shared_ptr<void> r(nullptr, [this](void*) { currentTaskName_.clear(); });
+        if (currentTaskName_ == "config") {
+            onBuildNinjaChanged("");
+        }
+    };
+
     if (exitStatus == QProcess::NormalExit) {
         if (exitCode == 0) {
             Print("CMake 执行成功！");
             Print(SL);
+            afterFinish();
         } else {
             Print("CMake 指令执行完成，但有警告或错误。", true);
             Print("退出码: " + QString::number(exitCode), true);
