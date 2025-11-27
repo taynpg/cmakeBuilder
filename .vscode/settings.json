@@ -16,7 +16,7 @@
         "args": []
     },
     "cmake.configureSettings": {
-        "CMAKE_PREFIX_PATH": "C:/Qt/Qt6",
+        "CMAKE_PREFIX_PATH": "C:/local/Qt6",
     },
     "cmake.configureArgs": [
         "-Wno-dev"
@@ -146,7 +146,15 @@
         "quuid": "cpp",
         "complex": "cpp",
         "expected": "cpp",
-        "qmessagebox": "cpp"
+        "qmessagebox": "cpp",
+        "__bit_reference": "cpp",
+        "__hash_table": "cpp",
+        "__locale": "cpp",
+        "__split_buffer": "cpp",
+        "__verbose_abort": "cpp",
+        "__node_handle": "cpp",
+        "execution": "cpp",
+        "print": "cpp"
     },
     "editor.tokenColorCustomizations": {
         "textMateRules": [

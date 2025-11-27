@@ -9,6 +9,53 @@
 
 #include "./ui_cmakebuilder.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+std::string u8_to_ansi(const std::string& str)
+{
+    int wideCharLen = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
+    if (wideCharLen <= 0) {
+        return "";
+    }
+    std::wstring wideStr(wideCharLen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wideStr[0], wideCharLen);
+    int gbkLen = WideCharToMultiByte(CP_ACP, 0, wideStr.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (gbkLen <= 0) {
+        return "";
+    }
+    std::string gbkStr(gbkLen, '\0');
+    WideCharToMultiByte(CP_ACP, 0, wideStr.c_str(), -1, &gbkStr[0], gbkLen, nullptr, nullptr);
+
+    gbkStr.resize(gbkLen - 1);
+    return gbkStr;
+}
+std::string ansi_to_u8(const std::string& str)
+{
+    int wideCharLen = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, nullptr, 0);
+    if (wideCharLen <= 0) {
+        return "";
+    }
+    std::wstring wideStr(wideCharLen, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, &wideStr[0], wideCharLen);
+
+    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (utf8Len <= 0) {
+        return "";
+    }
+    std::string utf8Str(utf8Len, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wideStr.c_str(), -1, &utf8Str[0], utf8Len, nullptr, nullptr);
+
+    utf8Str.resize(utf8Len - 1);
+    return utf8Str;
+}
+QString code_handle(const QString& str)
+{
+    auto s = str.toStdString();
+    s = u8_to_ansi(s);
+    return QString::fromStdString(s);
+}
+#endif
+
 constexpr auto SL = "----------------------------------------------";
 
 CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeBuilder)
@@ -21,7 +68,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     LoadConfig();
     BaseInit();
 
-    setWindowTitle("cmakeBuilder v1.0.6");
+    setWindowTitle("cmakeBuilder v1.0.7");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
     auto s = config_->getSize();
@@ -396,6 +443,7 @@ void CmakeBuilder::cmakeConfig()
     arguments << "-B" << buildDir;
     arguments << "-G" << ui->cbType->currentText();
     arguments << ui->cbAdditionArg->currentText();
+    arguments << "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON";
 
     // 添加其他常用选项
     QString buildType = "-DCMAKE_BUILD_TYPE=" + mode;
@@ -730,6 +778,9 @@ void CmakeBuilder::onProcessReadyRead()
             stdoutBuffer = stdoutBuffer.mid(newlinePos + 1);
 
             if (!line.isEmpty()) {
+#if defined(_WIN32)
+                line = code_handle(line);
+#endif
                 Print(line, false);
             }
         }
@@ -750,6 +801,9 @@ void CmakeBuilder::onProcessReadyRead()
             stderrBuffer = stderrBuffer.mid(newlinePos + 1);
 
             if (!line.isEmpty()) {
+#if defined(_WIN32)
+                line = code_handle(line);
+#endif
                 Print(line, true);   // 第二个参数为true，表示错误输出
             }
         }
