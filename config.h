@@ -3,6 +3,14 @@
 
 #include <QObject>
 
+
+struct AddArgItem {
+    QString name;
+    QString type;
+    QString value;
+    QString mode;
+};
+
 struct OneConfig {
     QString key;
     QString cmakePath;
@@ -11,9 +19,8 @@ struct OneConfig {
     QString curMode;
     QString curTarget;
     QString curType;
-    QString curUseArg;
     QString vcEnv;
-    QVector<QString> additonArgs;
+    QVector<AddArgItem> additonArgs;
 };
 
 class ConfigPrivate;

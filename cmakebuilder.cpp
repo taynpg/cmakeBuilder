@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QMenu>
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QTimer>
@@ -68,7 +69,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     LoadConfig();
     BaseInit();
 
-    setWindowTitle("cmakeBuilder v1.0.7");
+    setWindowTitle("cmakeBuilder v1.1.0");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
     auto s = config_->getSize();
@@ -101,6 +102,10 @@ void CmakeBuilder::InitData()
 {
     process_ = new QProcess(this);
 
+    modes_ = {"All", "Debug", "Release"};
+
+    InitTab();
+
     auto configDir = QDir::homePath() + "/.config/cmakeBuilder";
     QDir dir(configDir);
     if (!dir.exists()) {
@@ -129,8 +134,6 @@ void CmakeBuilder::InitData()
     connect(process_, &QProcess::errorOccurred, this, &CmakeBuilder::onProcessError);
     connect(ui->btnSaveConfig, &QPushButton::clicked, this, &CmakeBuilder::SaveCur);
     connect(ui->btnLoadConfig, &QPushButton::clicked, this, &CmakeBuilder::SimpleLoad);
-    connect(ui->btnAddArg, &QPushButton::clicked, this, &CmakeBuilder::newArg);
-    connect(ui->btnDelArg, &QPushButton::clicked, this, &CmakeBuilder::delArg);
     connect(ui->btnDelConfig, &QPushButton::clicked, this, [this]() {
         int ret = QMessageBox::question(this, "确认操作", "确定要删除吗？");
         if (ret != QMessageBox::Yes) {
@@ -223,10 +226,15 @@ OneConfig CmakeBuilder::ReadUi()
     o.sourceDir = ui->edSource->text().trimmed().replace('\\', '/');
     o.buildDir = ui->edBuildDir->text().trimmed().replace('\\', '/');
     o.vcEnv = ui->edVcEnv->text().trimmed().replace('\\', '/');
-    o.curUseArg = ui->cbAdditionArg->currentText();
     o.additonArgs.clear();
-    for (int i = 0; i < ui->cbAdditionArg->count(); ++i) {
-        o.additonArgs.append(ui->cbAdditionArg->itemText(i));
+
+    for (int i = 0; i < ui->tableWidget->rowCount(); ++i) {
+        AddArgItem item;
+        item.name = ui->tableWidget->item(i, 0)->text().trimmed();
+        item.type = ui->tableWidget->item(i, 1)->text().trimmed();
+        item.mode = ui->tableWidget->item(i, 2)->text().trimmed();
+        item.value = ui->tableWidget->item(i, 3)->text().trimmed().replace('\\', '/');
+        o.additonArgs.append(item);
     }
     return o;
 }
@@ -238,20 +246,18 @@ void CmakeBuilder::SetUi(const OneConfig& o)
     ui->edSource->setText(o.sourceDir);
     ui->edBuildDir->setText(o.buildDir);
     ui->edVcEnv->setText(o.vcEnv);
+    clearTable();
 
-    // 清空下拉框并添加所有选项
-    ui->cbAdditionArg->clear();
-    for (const QString& arg : o.additonArgs) {
-        ui->cbAdditionArg->addItem(arg);
-    }
-
-    // 设置当前选中的参数
-    int index = ui->cbAdditionArg->findText(o.curUseArg);
-    if (index >= 0) {
-        ui->cbAdditionArg->setCurrentIndex(index);
-    } else if (ui->cbAdditionArg->count() > 0) {
-        // 如果找不到匹配项，选择第一项
-        ui->cbAdditionArg->setCurrentIndex(0);
+    for (int i = 0; i < o.additonArgs.count(); ++i) {
+        int row = ui->tableWidget->rowCount();
+        ui->tableWidget->insertRow(row);
+        ui->tableWidget->setItem(row, 0, new QTableWidgetItem(o.additonArgs[i].name));
+        ui->tableWidget->setItem(row, 1, new QTableWidgetItem(o.additonArgs[i].type));
+        ui->tableWidget->setItem(row, 2, new QTableWidgetItem(o.additonArgs[i].mode));
+        ui->tableWidget->setItem(row, 3, new QTableWidgetItem(o.additonArgs[i].value));
+        // 为Type列设置下拉框
+        setTypeComboBox(row, typeOptions_);
+        setModeComboBox(row, modes_);
     }
 }
 
@@ -272,33 +278,6 @@ void CmakeBuilder::SaveCur(bool isNotice)
     QMessageBox::information(this, "提示", "已保存。");
 }
 
-void CmakeBuilder::newArg()
-{
-    QInputDialog dialog(this);
-    dialog.setWindowTitle("输入");
-    dialog.setLabelText("要新建参数项:");
-    dialog.setOkButtonText("确定");
-    dialog.setCancelButtonText("取消");
-    auto size = dialog.minimumSizeHint();
-    size.setWidth(size.width() + 200);
-    dialog.setFixedSize(size);
-
-    if (dialog.exec() == QDialog::Accepted) {
-        QString newArg = dialog.textValue().trimmed();
-        if (!newArg.isEmpty()) {
-            int index = ui->cbAdditionArg->findText(newArg);
-            if (index == -1) {
-                ui->cbAdditionArg->addItem(newArg);
-                ui->cbAdditionArg->setCurrentText(newArg);
-            } else {
-                ui->cbAdditionArg->setCurrentIndex(index);
-            }
-        } else {
-            QMessageBox::warning(this, "警告", "输入内容不能为空");
-        }
-    }
-}
-
 void CmakeBuilder::terminalProcess()
 {
     // process_->terminate();
@@ -306,31 +285,47 @@ void CmakeBuilder::terminalProcess()
     process_->kill();
 }
 
-void CmakeBuilder::delArg()
+void CmakeBuilder::InitTab()
 {
-    QString currentText = ui->cbAdditionArg->currentText();
-    if (currentText.isEmpty()) {
-        QMessageBox::warning(this, "警告", "请先选择要删除的参数项");
-        return;
-    }
+    // 设置列数
+    ui->tableWidget->setColumnCount(4);
 
-    QMessageBox::StandardButton reply;
-    reply = QMessageBox::question(this, "确认删除", QString("确定要删除参数项 '%1' 吗？").arg(currentText),
-                                  QMessageBox::Yes | QMessageBox::No);
+    // 设置表头
+    QStringList headers;
+    headers << "名称" << "类型" << "应用范围" << "值";
+    ui->tableWidget->setHorizontalHeaderLabels(headers);
 
-    if (reply == QMessageBox::Yes) {
-        int currentIndex = ui->cbAdditionArg->currentIndex();
-        ui->cbAdditionArg->removeItem(currentIndex);
-        if (ui->cbAdditionArg->count() > 0) {
-            if (currentIndex >= ui->cbAdditionArg->count()) {
-                ui->cbAdditionArg->setCurrentIndex(ui->cbAdditionArg->count() - 1);
-            } else {
-                ui->cbAdditionArg->setCurrentIndex(currentIndex);
-            }
-        }
+    // 设置列宽策略
+    ui->tableWidget->horizontalHeader()->setStretchLastSection(true);   
+    ui->tableWidget->setColumnWidth(0, 200);
+    ui->tableWidget->setColumnWidth(1, 100);
+    ui->tableWidget->setColumnWidth(2, 100);
+    // Value列自动填充剩余空间
 
-        QMessageBox::information(this, "成功", "参数项删除成功");
-    }
+    // 设置选择行为
+    ui->tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->tableWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+
+    // 设置编辑策略
+    ui->tableWidget->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
+
+    // 允许用户排序
+    ui->tableWidget->setSortingEnabled(true);
+
+    // 设置行高
+    ui->tableWidget->verticalHeader()->setDefaultSectionSize(25);
+
+    // 隐藏垂直表头（可选）
+    ui->tableWidget->verticalHeader()->setVisible(false);
+
+    // 设置交替行颜色
+    ui->tableWidget->setAlternatingRowColors(true);
+
+    // 添加右键菜单
+    ui->tableWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->tableWidget, &QTableWidget::customContextMenuRequested, this, &CmakeBuilder::onTableContextMenu);
+
+    typeOptions_ = {"STRING", "PATH", "BOOL", "FILEPATH", "INTERNAL"};
 }
 
 void CmakeBuilder::BaseInit()
@@ -338,8 +333,12 @@ void CmakeBuilder::BaseInit()
     ui->cbType->addItem("Ninja");
     ui->cbType->setCurrentText(0);
 
-    ui->cbMode->addItem("Debug");
-    ui->cbMode->addItem("Release");
+    for (int i = 0; i < modes_.size(); ++i) {
+        if (modes_[i] == "All") {
+            continue;
+        }
+        ui->cbMode->addItem(modes_[i]);
+    }
     ui->cbMode->setCurrentIndex(0);
 
     ui->cbTarget->setSizeAdjustPolicy(QComboBox::AdjustToContents);
@@ -438,16 +437,23 @@ void CmakeBuilder::cmakeConfig()
     process_->setWorkingDirectory(buildDir);
     buildFile_ = buildDir + "/build.ninja";
 
+    // 3. 构建CMake参数
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+
     QStringList arguments;
     arguments << "-S" << ui->edSource->text().trimmed();
     arguments << "-B" << buildDir;
     arguments << "-G" << ui->cbType->currentText();
-    arguments << ui->cbAdditionArg->currentText();
-    arguments << "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON";
+    arguments << "-DCMAKE_BUILD_TYPE=" + mode;
+    arguments << "-DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE";
+    arguments << "-Wno-dev";
+    arguments << "--no-warn-unused-cli";
 
-    // 添加其他常用选项
-    QString buildType = "-DCMAKE_BUILD_TYPE=" + mode;
-    arguments << buildType;
+    QStringList additionalArgs = getAddArgsFromTable(env);
+    if (!additionalArgs.isEmpty()) {
+        arguments << additionalArgs;
+        Print("生成的CMake参数: " + additionalArgs.join(" "));
+    }
 
     Print("开始执行 CMake 配置...");
     Print("命令: " + cmake + " " + arguments.join(" "));
@@ -456,7 +462,6 @@ void CmakeBuilder::cmakeConfig()
 
     DisableBtn();
 
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     process_->setProcessEnvironment(env);
     process_->start(cmake, arguments);
 
@@ -540,14 +545,14 @@ void CmakeBuilder::cmakeConfigWithVCEnv()
 
     QFutureWatcher<QProcessEnvironment>* watcher = new QFutureWatcher<QProcessEnvironment>(this);
     connect(watcher, &QFutureWatcher<QProcessEnvironment>::finished, this, [this, watcher]() {
-        onVCEnvReady(watcher->result());
+        onVCEnvReady();
         watcher->deleteLater();
     });
 
     watcher->setFuture(future);
 }
 
-void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
+void CmakeBuilder::onVCEnvReady()
 {
     Print("VC环境变量获取成功");
 
@@ -578,10 +583,10 @@ void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
     arguments << "-Wno-dev";
     arguments << "--no-warn-unused-cli";
 
-    // 添加附加参数
-    QString additionArg = ui->cbAdditionArg->currentText();
-    if (!additionArg.isEmpty()) {
-        arguments << additionArg;
+    QStringList additionalArgs = getAddArgsFromTable(curEnvValue_);
+    if (!additionalArgs.isEmpty()) {
+        arguments << additionalArgs;
+        Print("生成的CMake参数: " + additionalArgs.join(" "));
     }
 
     Print("命令: " + cmake + " " + arguments.join(" "));
@@ -589,9 +594,6 @@ void CmakeBuilder::onVCEnvReady(QProcessEnvironment vsEnv)
     Print(SL);
 
     DisableBtn();
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.insert(vsEnv);
-    process_->setProcessEnvironment(env);
     process_->start(cmake, arguments);
 
     currentTaskName_ = "config";
@@ -632,12 +634,13 @@ QProcessEnvironment CmakeBuilder::getVCEnvironment(const QString& vcvarsPath)
     sigPrint("成功获取VC环境变量");
     curVcEnv_ = vcvarsPath;
     curEnvValue_ = parseEnvironmentOutput(allOutput);
+    process_->setProcessEnvironment(curEnvValue_);
     return curEnvValue_;
 }
 
 QProcessEnvironment CmakeBuilder::parseEnvironmentOutput(const QString& output)
 {
-    QProcessEnvironment env;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     QStringList lines = output.split('\n');
 
     for (const QString& line : lines) {
@@ -653,7 +656,208 @@ QProcessEnvironment CmakeBuilder::parseEnvironmentOutput(const QString& output)
         }
     }
 
+    // QStringList keys = env.keys();
+    // keys.sort();
+    // sigPrint("环境变量数量: " + QString::number(keys.size()));
+    // for (const QString& key : keys) {
+    //     QString value = env.value(key);
+    //     sigPrint(key + " = " + value);
+    // }
+
     return env;
+}
+
+QString CmakeBuilder::expandEnvVar(const QProcessEnvironment& env, const QString& str)
+{
+    QString result = str;
+
+    // 展开 %VAR% 格式的环境变量（Windows）
+    QRegularExpression winRe("%([^%]+)%");
+    QRegularExpressionMatchIterator winIt = winRe.globalMatch(str);
+    while (winIt.hasNext()) {
+        QRegularExpressionMatch match = winIt.next();
+        QString varName = match.captured(1);
+        if (env.contains(varName)) {
+            result.replace("%" + varName + "%", env.value(varName));
+        }
+    }
+
+    // 展开 $VAR 或 ${VAR} 格式的环境变量（Unix）
+    QRegularExpression unixRe("\\$(?:{([^}]+)}|(\\w+))");
+    QRegularExpressionMatchIterator unixIt = unixRe.globalMatch(str);
+    while (unixIt.hasNext()) {
+        QRegularExpressionMatch match = unixIt.next();
+        QString varName = match.captured(1).isEmpty() ? match.captured(2) : match.captured(1);
+        if (env.contains(varName)) {
+            if (match.captured(0).startsWith("${")) {
+                result.replace("${" + varName + "}", env.value(varName));
+            } else {
+                result.replace("$" + varName, env.value(varName));
+            }
+        }
+    }
+
+    return result;
+}
+
+void CmakeBuilder::onTableContextMenu(const QPoint& pos)
+{
+    QMenu menu(this);
+
+    QAction* addAction = menu.addAction("添加参数");
+    QAction* deleteAction = menu.addAction("删除参数");
+    menu.addSeparator();
+    QAction* clearAction = menu.addAction("清空所有");
+
+    // 只有选中行时才启用删除操作
+    deleteAction->setEnabled(ui->tableWidget->currentRow() >= 0);
+
+    QAction* selectedAction = menu.exec(ui->tableWidget->viewport()->mapToGlobal(pos));
+
+    if (selectedAction == addAction) {
+        addTableRow();
+    } else if (selectedAction == deleteAction) {
+        deleteTableRow();
+    } else if (selectedAction == clearAction) {
+        clearTable();
+    }
+}
+
+void CmakeBuilder::setModeComboBox(int row, const QStringList& options)
+{
+    QComboBox* comboBox = new QComboBox();
+    comboBox->addItems(options);
+    comboBox->setEditable(false);
+
+    // 获取当前单元格的值
+    QTableWidgetItem* modeItem = ui->tableWidget->item(row, 2);
+    QString currentType = "Debug";   // 默认值
+
+    if (modeItem && !modeItem->text().isEmpty()) {
+        currentType = modeItem->text();
+    }
+
+    // 设置下拉框当前选中项
+    int index = comboBox->findText(currentType);
+    if (index >= 0) {
+        comboBox->setCurrentIndex(index);
+    } else {
+        comboBox->setCurrentIndex(0);   // 如果找不到，默认选第一个
+    }
+
+    ui->tableWidget->setCellWidget(row, 2, comboBox);
+
+    // 连接信号，当下拉框选择改变时更新单元格内容
+    connect(comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, row, comboBox](int index) {
+        if (row < ui->tableWidget->rowCount()) {
+            QTableWidgetItem* item = ui->tableWidget->item(row, 2);
+            if (!item) {
+                item = new QTableWidgetItem();
+                ui->tableWidget->setItem(row, 2, item);
+            }
+            item->setText(comboBox->currentText());
+        }
+    });
+}
+
+void CmakeBuilder::setTypeComboBox(int row, const QStringList& options)
+{
+    QComboBox* comboBox = new QComboBox();
+    comboBox->addItems(options);
+    comboBox->setEditable(false);
+
+    // 获取当前单元格的值
+    QTableWidgetItem* typeItem = ui->tableWidget->item(row, 1);
+    QString currentType = "STRING";   // 默认值
+
+    if (typeItem && !typeItem->text().isEmpty()) {
+        currentType = typeItem->text();
+    }
+
+    // 设置下拉框当前选中项
+    int index = comboBox->findText(currentType);
+    if (index >= 0) {
+        comboBox->setCurrentIndex(index);
+    } else {
+        comboBox->setCurrentIndex(0);   // 如果找不到，默认选第一个
+    }
+
+    ui->tableWidget->setCellWidget(row, 1, comboBox);
+
+    // 连接信号，当下拉框选择改变时更新单元格内容
+    connect(comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, row, comboBox](int index) {
+        if (row < ui->tableWidget->rowCount()) {
+            QTableWidgetItem* item = ui->tableWidget->item(row, 1);
+            if (!item) {
+                item = new QTableWidgetItem();
+                ui->tableWidget->setItem(row, 1, item);
+            }
+            item->setText(comboBox->currentText());
+        }
+    });
+}
+
+void CmakeBuilder::addTableRow()
+{
+    int row = ui->tableWidget->rowCount();
+    ui->tableWidget->insertRow(row);
+
+    ui->tableWidget->setItem(row, 0, new QTableWidgetItem(""));
+    ui->tableWidget->setItem(row, 1, new QTableWidgetItem("STRING"));
+    ui->tableWidget->setItem(row, 2, new QTableWidgetItem("Debug"));
+    ui->tableWidget->setItem(row, 3, new QTableWidgetItem(""));
+    setTypeComboBox(row, typeOptions_);
+    setModeComboBox(row, modes_);
+}
+
+void CmakeBuilder::deleteTableRow()
+{
+    int currentRow = ui->tableWidget->currentRow();
+    if (currentRow >= 0) {
+        ui->tableWidget->removeRow(currentRow);
+    }
+}
+
+void CmakeBuilder::clearTable()
+{
+    ui->tableWidget->setRowCount(0);
+}
+
+QVector<QString> CmakeBuilder::getAddArgsFromTable(const QProcessEnvironment& env)
+{
+    QStringList args;
+
+    auto curMode = ui->cbMode->currentText();
+
+    for (int row = 0; row < ui->tableWidget->rowCount(); ++row) {
+        QTableWidgetItem* nameItem = ui->tableWidget->item(row, 0);
+        QTableWidgetItem* typeItem = ui->tableWidget->item(row, 1);
+        QTableWidgetItem* modeItem = ui->tableWidget->item(row, 2);
+        QTableWidgetItem* valueItem = ui->tableWidget->item(row, 3);
+
+        // 跳过空行
+        if (!nameItem || nameItem->text().isEmpty()) {
+            continue;
+        }
+
+        if (modeItem->text() != "All" && modeItem->text() != curMode) {
+            continue;
+        }
+
+        QString name = nameItem->text().trimmed();
+        QString value = valueItem ? valueItem->text().trimmed() : "";
+
+        // 展开环境变量
+        value = expandEnvVar(env, value);
+
+        // 构建 CMake 参数
+        if (!value.isEmpty()) {
+            QString arg = "-D" + name + ":" + typeItem->text() + "=" + value;
+            args << arg;
+        }
+    }
+
+    return args;
 }
 
 void CmakeBuilder::cmakeBuild()
@@ -717,8 +921,6 @@ void CmakeBuilder::DisableBtn()
     ui->btnAddCmake->setEnabled(false);
     ui->btnSelSource->setEnabled(false);
     ui->btnSelBuildDir->setEnabled(false);
-    ui->btnAddArg->setEnabled(false);
-    ui->btnDelArg->setEnabled(false);
     ui->btnClearEnv->setEnabled(false);
     ui->btnClear->setEnabled(false);
     ui->btnDelConfig->setEnabled(false);
@@ -733,7 +935,6 @@ void CmakeBuilder::DisableBtn()
     ui->edBuildDir->setEnabled(false);
     ui->edVcEnv->setEnabled(false);
     ui->edCMake->setEnabled(false);
-    ui->cbAdditionArg->setEnabled(false);
     // ui->btnCancel->setEnabled(true);
 }
 
@@ -744,8 +945,6 @@ void CmakeBuilder::EnableBtn()
     ui->btnAddCmake->setEnabled(true);
     ui->btnSelSource->setEnabled(true);
     ui->btnSelBuildDir->setEnabled(true);
-    ui->btnAddArg->setEnabled(true);
-    ui->btnDelArg->setEnabled(true);
     ui->btnClearEnv->setEnabled(true);
     ui->btnClear->setEnabled(true);
     ui->btnDelConfig->setEnabled(true);
@@ -760,7 +959,6 @@ void CmakeBuilder::EnableBtn()
     ui->edBuildDir->setEnabled(true);
     ui->edVcEnv->setEnabled(true);
     ui->edCMake->setEnabled(true);
-    ui->cbAdditionArg->setEnabled(true);
     // ui->btnCancel->setEnabled(false);
 }
 

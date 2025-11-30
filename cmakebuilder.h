@@ -33,20 +33,28 @@ private:
     OneConfig ReadUi();
     void SetUi(const OneConfig& o);
     void SaveCur(bool isNotice);
-    void newArg();
-    void delArg();
     void terminalProcess();
+    void InitTab();
 
 public:
     void BaseInit();
     void cmakeConfig();
     void cmakeConfigWithVCEnv();
     void cmakeBuild();
-    void onVCEnvReady(QProcessEnvironment vsEnv);
+    void onVCEnvReady();
     void onBuildNinjaChanged(const QString& path);
 
     QProcessEnvironment getVCEnvironment(const QString& vcvarsPath);
     QProcessEnvironment parseEnvironmentOutput(const QString& output);
+    QString expandEnvVar(const QProcessEnvironment& env, const QString& str);
+
+    void onTableContextMenu(const QPoint& pos);
+    void setTypeComboBox(int row, const QStringList& options);
+    void setModeComboBox(int row, const QStringList& options);
+    void addTableRow();
+    void deleteTableRow();
+    void clearTable();
+    QVector<QString> getAddArgsFromTable(const QProcessEnvironment& env);
 
     void DisableBtn();
     void EnableBtn();
@@ -77,6 +85,8 @@ private:
     QString currentTaskName_;
     QProcessEnvironment curEnvValue_;
     bool configRet_;
+    QVector<QString> typeOptions_;
+    QVector<QString> modes_;
 
 private:
     Ui::CmakeBuilder* ui;

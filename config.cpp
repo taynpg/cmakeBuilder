@@ -175,17 +175,18 @@ OneConfig ConfigPrivate::jsonToConfig(const json& j)
     config.curMode = QString::fromStdString(j.value("curMode", ""));
     config.curTarget = QString::fromStdString(j.value("curTarget", ""));
     config.curType = QString::fromStdString(j.value("curType", ""));
-    config.curUseArg = QString::fromStdString(j.value("curUseArg", ""));
     config.vcEnv = QString::fromStdString(j.value("vcEnv", ""));
 
-    // 处理一维数组 additonArgs
-    if (j.contains("additonArgs")) {
-        json argsArray = j["additonArgs"];
-        for (const auto& arg : argsArray) {
-            config.additonArgs.append(QString::fromStdString(arg));
+    if (j.contains("additionArgs") && j["additionArgs"].is_array()) {
+        for (const auto& argJson : j["additionArgs"]) {
+            AddArgItem item;
+            item.name = QString::fromStdString(argJson.value("name", ""));
+            item.type = QString::fromStdString(argJson.value("type", ""));
+            item.mode = QString::fromStdString(argJson.value("mode", ""));
+            item.value = QString::fromStdString(argJson.value("value", ""));
+            config.additonArgs.append(item);
         }
     }
-
     return config;
 }
 
@@ -200,15 +201,18 @@ json ConfigPrivate::configToJson(const OneConfig& config)
     j["curMode"] = config.curMode.toStdString();
     j["curTarget"] = config.curTarget.toStdString();
     j["curType"] = config.curType.toStdString();
-    j["curUseArg"] = config.curUseArg.toStdString();
     j["vcEnv"] = config.vcEnv.toStdString();
 
-    // 处理一维数组 additonArgs
     json argsArray = json::array();
-    for (const QString& arg : config.additonArgs) {
-        argsArray.push_back(arg.toStdString());
+    for (const AddArgItem& item : config.additonArgs) {
+        json argJson;
+        argJson["name"] = item.name.toStdString();
+        argJson["type"] = item.type.toStdString();
+        argJson["mode"] = item.mode.toStdString();
+        argJson["value"] = item.value.toStdString();
+        argsArray.push_back(argJson);
     }
-    j["additonArgs"] = argsArray;
+    j["additionArgs"] = argsArray;
 
     return j;
 }
