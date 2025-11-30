@@ -296,7 +296,7 @@ void CmakeBuilder::InitTab()
     ui->tableWidget->setHorizontalHeaderLabels(headers);
 
     // 设置列宽策略
-    ui->tableWidget->horizontalHeader()->setStretchLastSection(true);   
+    ui->tableWidget->horizontalHeader()->setStretchLastSection(true);
     ui->tableWidget->setColumnWidth(0, 200);
     ui->tableWidget->setColumnWidth(1, 100);
     ui->tableWidget->setColumnWidth(2, 100);
@@ -806,6 +806,7 @@ void CmakeBuilder::addTableRow()
     ui->tableWidget->setItem(row, 1, new QTableWidgetItem("STRING"));
     ui->tableWidget->setItem(row, 2, new QTableWidgetItem("Debug"));
     ui->tableWidget->setItem(row, 3, new QTableWidgetItem(""));
+
     setTypeComboBox(row, typeOptions_);
     setModeComboBox(row, modes_);
 }
