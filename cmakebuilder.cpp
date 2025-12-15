@@ -256,8 +256,8 @@ void CmakeBuilder::SetUi(const OneConfig& o)
         ui->tableWidget->setItem(row, 2, new QTableWidgetItem(o.additonArgs[i].mode));
         ui->tableWidget->setItem(row, 3, new QTableWidgetItem(o.additonArgs[i].value));
         // 为Type列设置下拉框
-        setTypeComboBox(row, typeOptions_);
-        setModeComboBox(row, modes_);
+        setTypeComboBox(row, QStringList::fromVector(typeOptions_));
+        setModeComboBox(row, QStringList::fromVector(modes_));
     }
 }
 
@@ -449,7 +449,7 @@ void CmakeBuilder::cmakeConfig()
     arguments << "-Wno-dev";
     arguments << "--no-warn-unused-cli";
 
-    QStringList additionalArgs = getAddArgsFromTable(env);
+    QStringList additionalArgs = QStringList::fromVector(getAddArgsFromTable(env));
     if (!additionalArgs.isEmpty()) {
         arguments << additionalArgs;
         Print("生成的CMake参数: " + additionalArgs.join(" "));
@@ -583,7 +583,7 @@ void CmakeBuilder::onVCEnvReady()
     arguments << "-Wno-dev";
     arguments << "--no-warn-unused-cli";
 
-    QStringList additionalArgs = getAddArgsFromTable(curEnvValue_);
+    QStringList additionalArgs = QStringList::fromVector(getAddArgsFromTable(curEnvValue_));
     if (!additionalArgs.isEmpty()) {
         arguments << additionalArgs;
         Print("生成的CMake参数: " + additionalArgs.join(" "));
@@ -807,8 +807,8 @@ void CmakeBuilder::addTableRow()
     ui->tableWidget->setItem(row, 2, new QTableWidgetItem("Debug"));
     ui->tableWidget->setItem(row, 3, new QTableWidgetItem(""));
 
-    setTypeComboBox(row, typeOptions_);
-    setModeComboBox(row, modes_);
+    setTypeComboBox(row, QStringList::fromVector(typeOptions_));
+    setModeComboBox(row, QStringList::fromVector(modes_));
 }
 
 void CmakeBuilder::deleteTableRow()
@@ -826,7 +826,7 @@ void CmakeBuilder::clearTable()
 
 QVector<QString> CmakeBuilder::getAddArgsFromTable(const QProcessEnvironment& env)
 {
-    QStringList args;
+    QVector<QString> args;
 
     auto curMode = ui->cbMode->currentText();
 
@@ -1069,7 +1069,7 @@ QVector<QString> CmakeBuilder::getTarget()
         QString targetFile = match.captured(1).trimmed();
         targetFiles.append(targetFile);
     }
-    targetFiles = QSet<QString>(targetFiles.begin(), targetFiles.end()).values();
+    auto r = targetFiles = QSet<QString>(targetFiles.begin(), targetFiles.end()).values().toVector();
     return targetFiles;
 }
 
