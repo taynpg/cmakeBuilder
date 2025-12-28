@@ -58,6 +58,7 @@ public:
 
     void DisableBtn();
     void EnableBtn();
+    void StartExe();
 
 Q_SIGNALS:
     void sigPrint(const QString& msg);

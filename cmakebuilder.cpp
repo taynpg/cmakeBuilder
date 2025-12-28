@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QTimer>
+#include <QDesktopServices>
 
 #include "./ui_cmakebuilder.h"
 
@@ -69,7 +70,7 @@ CmakeBuilder::CmakeBuilder(QWidget* parent) : QDialog(parent), ui(new Ui::CmakeB
     LoadConfig();
     BaseInit();
 
-    setWindowTitle("cmakeBuilder v1.1.0");
+    setWindowTitle("cmakeBuilder v1.1.1");
     setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
 
     auto s = config_->getSize();
@@ -124,9 +125,10 @@ void CmakeBuilder::InitData()
     ui->edCMake->setFocusPolicy(Qt::ClickFocus);
     ui->pedOutput->setReadOnly(true);
 
-    ui->btnConfig->setStyleSheet("background-color: #e8f5e8;");
-    ui->btnBuild->setStyleSheet("background-color: #e3f2fd;");
+    // ui->btnConfig->setStyleSheet("background-color: red;");
+    // ui->btnBuild->setStyleSheet("background-color: blue;");
 
+    connect(ui->btnStart, &QPushButton::clicked, this, &CmakeBuilder::StartExe);
     connect(this, &CmakeBuilder::sigPrint, this, [this](const QString& msg) { Print(msg); });
     connect(process_, &QProcess::readyReadStandardOutput, this, &CmakeBuilder::onProcessReadyRead);
     connect(process_, &QProcess::readyReadStandardError, this, &CmakeBuilder::onProcessReadyRead);
@@ -202,7 +204,7 @@ void CmakeBuilder::LoadConfig()
     }
     SetUi(o);
     ui->cbProject->clear();
-    for (const auto& item : keys) {
+    for (auto& item : keys) {
         ui->cbProject->addItem(item);
     }
     ui->cbProject->setCurrentText(curuse);
@@ -326,6 +328,59 @@ void CmakeBuilder::InitTab()
     connect(ui->tableWidget, &QTableWidget::customContextMenuRequested, this, &CmakeBuilder::onTableContextMenu);
 
     typeOptions_ = {"STRING", "PATH", "BOOL", "FILEPATH", "INTERNAL"};
+}
+
+void CmakeBuilder::StartExe()
+{
+    QString basePath = ui->edBuildDir->text();
+    QString relativePath = ui->cbTarget->currentText();
+
+    basePath = basePath.trimmed();
+    relativePath = relativePath.trimmed();
+
+    if (basePath.isEmpty()) {
+        QMessageBox::warning(this, "警告", "构建目录路径为空！");
+        return;
+    }
+
+    QDir baseDir(basePath);
+    if (!baseDir.exists()) {
+        QMessageBox::warning(this, "错误", QString("构建目录不存在：\n%1").arg(basePath));
+        return;
+    }
+
+    if (relativePath.isEmpty()) {
+        QMessageBox::warning(this, "警告", "没有要启动的程序！");
+        return;
+    }
+
+    QString fullPath = QDir::cleanPath(baseDir.absoluteFilePath(relativePath));
+
+    QFileInfo fileInfo(fullPath);
+    if (!fileInfo.exists()) {
+        QMessageBox::warning(this, "错误", QString("目标程序不存在：\n%1").arg(fullPath));
+        return;
+    }
+
+    //QDesktopServices::openUrl(QUrl::fromLocalFile(fullPath));
+
+    QString cmd = "cmd.exe";
+    QStringList args;
+
+    // 使用start命令创建新窗口
+    // /k 表示运行后保持窗口打开，这样可以看到输出
+    // 如果希望程序结束后窗口自动关闭，可以用 /c
+
+    args << "/c" << "start" << "cmd.exe" << "/k"
+         << QDir::toNativeSeparators(fullPath);
+
+    bool started = QProcess::startDetached(cmd, args, fileInfo.absolutePath());
+
+    if (!started) {
+        QMessageBox::warning(this, "错误", QString("启动程序失败：\n%1").arg(fullPath));
+    } else {
+        //qDebug() << "程序启动成功，PID:" << pid;
+    }
 }
 
 void CmakeBuilder::BaseInit()
