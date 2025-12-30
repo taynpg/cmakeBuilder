@@ -1,5 +1,6 @@
 #include "cmakebuilder.h"
 
+#include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -7,7 +8,6 @@
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QTimer>
-#include <QDesktopServices>
 
 #include "./ui_cmakebuilder.h"
 
@@ -228,6 +228,7 @@ OneConfig CmakeBuilder::ReadUi()
     o.sourceDir = ui->edSource->text().trimmed().replace('\\', '/');
     o.buildDir = ui->edBuildDir->text().trimmed().replace('\\', '/');
     o.vcEnv = ui->edVcEnv->text().trimmed().replace('\\', '/');
+    o.arg = ui->edArg->text().trimmed();
     o.additonArgs.clear();
 
     for (int i = 0; i < ui->tableWidget->rowCount(); ++i) {
@@ -248,6 +249,7 @@ void CmakeBuilder::SetUi(const OneConfig& o)
     ui->edSource->setText(o.sourceDir);
     ui->edBuildDir->setText(o.buildDir);
     ui->edVcEnv->setText(o.vcEnv);
+    ui->edArg->setText(o.arg);
     clearTable();
 
     for (int i = 0; i < o.additonArgs.count(); ++i) {
@@ -362,25 +364,21 @@ void CmakeBuilder::StartExe()
         return;
     }
 
-    //QDesktopServices::openUrl(QUrl::fromLocalFile(fullPath));
-
+    QString additionArg = ui->edArg->text().trimmed();
     QString cmd = "cmd.exe";
     QStringList args;
 
-    // 使用start命令创建新窗口
-    // /k 表示运行后保持窗口打开，这样可以看到输出
-    // 如果希望程序结束后窗口自动关闭，可以用 /c
-
-    args << "/c" << "start" << "cmd.exe" << "/k"
-         << QDir::toNativeSeparators(fullPath);
-
-    bool started = QProcess::startDetached(cmd, args, fileInfo.absolutePath());
-
-    if (!started) {
-        QMessageBox::warning(this, "错误", QString("启动程序失败：\n%1").arg(fullPath));
-    } else {
-        //qDebug() << "程序启动成功，PID:" << pid;
+    QString fullCommand = QDir::toNativeSeparators(fullPath);
+    if (!additionArg.isEmpty()) {
+        fullCommand += " " + additionArg;
     }
+
+    if (fullCommand.contains(" ")) {
+        fullCommand = "" + fullCommand + "";
+    }
+
+    args << "/c" << "start" << "cmd.exe" << "/k" << fullCommand;
+    QProcess::startDetached(cmd, args, fileInfo.absolutePath());
 }
 
 void CmakeBuilder::BaseInit()

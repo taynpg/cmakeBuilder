@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>614</width>
-    <height>521</height>
+    <width>888</width>
+    <height>389</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -233,6 +233,9 @@
         <string>启动</string>
        </property>
       </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="edArg"/>
      </item>
      <item>
       <spacer name="horizontalSpacer">

@@ -20,6 +20,7 @@ struct OneConfig {
     QString curTarget;
     QString curType;
     QString vcEnv;
+    QString arg;
     QVector<AddArgItem> additonArgs;
 };
 

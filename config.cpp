@@ -176,6 +176,7 @@ OneConfig ConfigPrivate::jsonToConfig(const json& j)
     config.curTarget = QString::fromStdString(j.value("curTarget", ""));
     config.curType = QString::fromStdString(j.value("curType", ""));
     config.vcEnv = QString::fromStdString(j.value("vcEnv", ""));
+    config.arg = QString::fromStdString(j.value("arg", ""));
 
     if (j.contains("additionArgs") && j["additionArgs"].is_array()) {
         for (const auto& argJson : j["additionArgs"]) {
@@ -202,6 +203,7 @@ json ConfigPrivate::configToJson(const OneConfig& config)
     j["curTarget"] = config.curTarget.toStdString();
     j["curType"] = config.curType.toStdString();
     j["vcEnv"] = config.vcEnv.toStdString();
+    j["arg"] = config.arg.toStdString();
 
     json argsArray = json::array();
     for (const AddArgItem& item : config.additonArgs) {
