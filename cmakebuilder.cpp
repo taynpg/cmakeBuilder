@@ -8,8 +8,84 @@
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QTimer>
+#include <cstdint>
+#include <string>
 
 #include "./ui_cmakebuilder.h"
+
+bool is_valid_utf8(const std::string& str)
+{
+    const uint8_t* data = reinterpret_cast<const uint8_t*>(str.c_str());
+    size_t i = 0;
+    size_t len = str.length();
+
+    while (i < len) {
+        // 单字节字符 (ASCII) 0xxxxxxx
+        if (data[i] < 0x80) {
+            i++;
+            continue;
+        }
+
+        // 多字节字符的第一个字节
+        uint8_t b = data[i];
+
+        // 2字节字符: 110xxxxx 10xxxxxx
+        if ((b & 0xE0) == 0xC0) {
+            // 检查是否至少有2个字节
+            if (i + 1 >= len)
+                return false;
+            // 检查第二个字节是否为10xxxxxx
+            if ((data[i + 1] & 0xC0) != 0x80)
+                return false;
+            // UTF-8规范: 2字节字符不能编码U+0000~U+007F
+            if ((b & 0xFE) == 0xC0)
+                return false;   // 过长的编码
+            i += 2;
+        }
+        // 3字节字符: 1110xxxx 10xxxxxx 10xxxxxx
+        else if ((b & 0xF0) == 0xE0) {
+            if (i + 2 >= len)
+                return false;
+            if ((data[i + 1] & 0xC0) != 0x80)
+                return false;
+            if ((data[i + 2] & 0xC0) != 0x80)
+                return false;
+
+            // 检查是否过短编码（某些字符应该用更少的字节编码）
+            uint32_t code_point = ((b & 0x0F) << 12) | ((data[i + 1] & 0x3F) << 6) | (data[i + 2] & 0x3F);
+            if (code_point < 0x800)
+                return false;   // 应该用2字节编码
+            i += 3;
+        }
+        // 4字节字符: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        else if ((b & 0xF8) == 0xF0) {
+            if (i + 3 >= len)
+                return false;
+            if ((data[i + 1] & 0xC0) != 0x80)
+                return false;
+            if ((data[i + 2] & 0xC0) != 0x80)
+                return false;
+            if ((data[i + 3] & 0xC0) != 0x80)
+                return false;
+
+            // 检查是否过短编码
+            uint32_t code_point =
+                ((b & 0x07) << 18) | ((data[i + 1] & 0x3F) << 12) | ((data[i + 2] & 0x3F) << 6) | (data[i + 3] & 0x3F);
+            if (code_point < 0x10000)
+                return false;   // 应该用3字节编码
+
+            // UTF-8规范: Unicode最大码点是0x10FFFF
+            if (code_point > 0x10FFFF)
+                return false;
+            i += 4;
+        } else {
+            // 无效的UTF-8起始字节
+            return false;
+        }
+    }
+
+    return true;
+}
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -53,8 +129,13 @@ std::string ansi_to_u8(const std::string& str)
 QString code_handle(const QString& str)
 {
     auto s = str.toStdString();
+
+    // // 检查是否为有效的UTF-8字符串
+    // if (is_valid_utf8(s)) {
+    //     s = u8_to_ansi(s);
+    // }
     s = u8_to_ansi(s);
-    return QString::fromStdString(s);
+    return QString::fromLocal8Bit(s.c_str());
 }
 #endif
 
